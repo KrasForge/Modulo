@@ -68,7 +68,8 @@ export function HubViewPicker({
         ? tabs.filter(
             (tab) =>
               tab.label.toLowerCase().includes(needle) ||
-              (viewSectionLabel(tab) ?? '').toLowerCase().includes(needle),
+              (viewSectionLabel(tab) ?? '').toLowerCase().includes(needle) ||
+              (tab.subsection ?? '').toLowerCase().includes(needle),
           )
         : tabs,
     [tabs, needle],
@@ -144,12 +145,16 @@ export function HubViewPicker({
               const active = tab.id === activeTab.id;
               const section = viewSectionLabel(tab);
               const previousSection = index > 0 ? viewSectionLabel(matches[index - 1]) : undefined;
+              const startsSubsection = Boolean(tab.subsection && (section !== previousSection || tab.subsection !== matches[index - 1]?.subsection));
               return (
                 <Fragment key={tab.id}>
                   {section && section !== previousSection && (
                     <p className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       {section}
                     </p>
+                  )}
+                  {startsSubsection && (
+                    <p className="pb-1 pl-8 pr-4 pt-2 text-xs font-medium text-muted-foreground">{tab.subsection}</p>
                   )}
                   <button
                     ref={active ? activeRef : undefined}
@@ -162,6 +167,7 @@ export function HubViewPicker({
                     }}
                     className={cn(
                       'flex min-h-touch w-full items-center gap-3 px-4 text-left text-[15px] transition-colors',
+                      tab.subsection && 'pl-8',
                       active
                         ? 'bg-primary/10 font-medium text-primary'
                         : 'text-subtle-foreground active:bg-surface-2',

@@ -6,6 +6,10 @@ root=Path(__file__).resolve().parent.parent
 pairs=[('backend/src/main/resources/pack-manifest-v2.schema.json','frontend/src/features/blueprint/pack/pack-manifest-v2.schema.json')]
 pairs += [(f'shared/packs/{name}.v2.json',f'frontend/src/features/packs/examples/{name}.v2.json') for name in ('knowledge-base','security-audit')]
 pairs.append(('shared/packs/security-audit.v2.json','backend/src/main/resources/packs/security-audit.v2.json'))
+pairs.append(('shared/cti/cti-taxonomy.v1.json','backend/src/main/resources/cti/cti-taxonomy.v1.json'))
+pairs.append(('shared/cti/cti-taxonomy.v1.json','frontend/src/features/cti/cti-taxonomy.v1.json'))
+pairs.append(('shared/cti/attack-enterprise.v1.json','backend/src/main/resources/cti/attack-enterprise.v1.json'))
+pairs.append(('shared/cti/attack-enterprise.v1.json','frontend/src/features/cti/attack-enterprise.v1.json'))
 for source,target in pairs:
     content=(root/source).read_bytes()
     if '--check' in sys.argv:

@@ -78,6 +78,7 @@ export function HubView({
             const DashboardIcon = dashboard?.icon;
             const startsSection = Boolean(section && section !== previousSection);
             const showSection = Boolean(section && anyHeading);
+            const startsSubsection = Boolean(tab.subsection && (startsSection || tab.subsection !== previous?.subsection));
             return (
               <Fragment key={tab.id}>
                 {startsSection && showSection && (dashboard ? (
@@ -99,6 +100,11 @@ export function HubView({
                     {section}
                   </span>
                 ))}
+                {startsSubsection && (
+                  <span className="ml-2 border-l border-border pb-0.5 pl-3 pt-2 text-xxs font-medium text-muted-foreground">
+                    {tab.subsection}
+                  </span>
+                )}
                 {tab.label !== 'Dashboard' && (
                   <button
                     type="button"
@@ -107,6 +113,8 @@ export function HubView({
                     onClick={() => onSelectTab(tab.id)}
                     className={cn(
                       'flex h-8 w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors',
+                      // Subsection tabs hang off a guide line under their subheading.
+                      tab.subsection && 'ml-2 w-[calc(100%-0.5rem)] rounded-l-none border-l border-border pl-3',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       active
                         ? 'bg-primary/10 font-medium text-foreground [&>svg]:text-primary'

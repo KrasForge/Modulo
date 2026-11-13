@@ -29,7 +29,7 @@ public class RemoteCredentialStore {
   public static final Set<String> KEYS = Set.of(
       "tmdbToken", "youtubeApiKey", "igdbClientId", "igdbClientSecret",
       "minifluxToken", "karakeepToken", "paperlessToken",
-      "caldavUsername", "caldavPassword", "ntfyToken");
+      "caldavUsername", "caldavPassword", "ntfyToken", "urlscanApiKey");
   private static final int MAX_VALUE = 8192;
 
   private final JdbcTemplate jdbc;
@@ -86,6 +86,23 @@ public class RemoteCredentialStore {
           decrypt(owner, name, rs.getBytes(2)).ifPresent(value -> values.put(name, value));
         }, owner);
     return values;
+  }
+
+  /** Seals a secret for storage in another table, bound to the owner and a purpose label. */
+  public byte[] seal(long owner, String purpose, String value) {
+    requireKey();
+    return encrypt(owner, purpose, value);
+  }
+
+  /** Opens a value sealed by {@link #seal}; empty when the key rotated or the row was tampered with. */
+  public Optional<String> open(long owner, String purpose, byte[] sealed) {
+    if (key == null || sealed == null) return Optional.empty();
+    return decrypt(owner, purpose, sealed);
+  }
+
+  /** The current user's credential, or empty. */
+  public Optional<String> currentValue(String name) {
+    return Optional.ofNullable(current().get(name));
   }
 
   private void requireKey() {

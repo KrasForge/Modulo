@@ -38,4 +38,24 @@ describe('HubView section headings', () => {
     expect(within(nav).queryByText('One')).not.toBeInTheDocument();
     expect(within(nav).queryByText('Two')).not.toBeInTheDocument();
   });
+
+  it('nests subsection headings under their section', () => {
+    const sub = (id: string, label: string, subsection?: string) =>
+      ({ ...tab(id, label, 'Threat Intelligence'), subsection }) as unknown as ViewContribution;
+    const nav = renderHub([
+      sub('graph', 'Graph'),
+      sub('actors', 'Actors', 'Adversaries'),
+      sub('campaigns', 'Campaigns', 'Adversaries'),
+      sub('identities', 'Identities', 'Observables'),
+      tab('albums', 'Albums', 'Listened'),
+      tab('songs', 'Songs', 'Listened'),
+    ]);
+    const text = nav.textContent ?? '';
+    expect(within(nav).getAllByText('Threat Intelligence')).toHaveLength(1);
+    expect(within(nav).getAllByText('Adversaries')).toHaveLength(1);
+    expect(text.indexOf('Threat Intelligence')).toBeLessThan(text.indexOf('Adversaries'));
+    expect(text.indexOf('Adversaries')).toBeLessThan(text.indexOf('Actors'));
+    expect(text.indexOf('Campaigns')).toBeLessThan(text.indexOf('Observables'));
+    expect(text.indexOf('Observables')).toBeLessThan(text.indexOf('Listened'));
+  });
 });

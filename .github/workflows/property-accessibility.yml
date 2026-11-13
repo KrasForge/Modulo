@@ -9,7 +9,8 @@ on:
       - '.github/workflows/property-accessibility.yml'
 jobs:
   keyboard-mobile:
-    runs-on: ubuntu-latest
+    # Playwright 1.55 cannot install Chromium dependencies on ubuntu-latest (26.04); pin a supported image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

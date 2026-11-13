@@ -56,6 +56,7 @@ layered `controller` / `service` / `repository` / `entity` split.
 | `state` | Plugin state store, schemas, grants, workloads, outbox; Gmail newsletter connection |
 | `pack` | Pack manifests (v1/v2), validation, workspace pack plan/apply, Pack Studio, audit pack |
 | `knowledge` | Typed note properties, saved property queries, semantic search and embeddings, document text extraction |
+| `cti` | Threat-intelligence knowledge base: taxonomy, objects and relationships, idempotent ingest, inference rules, sightings and scoring, change journal, STIX 2.1/MISP/CSV exchange, TAXII 2.1 server and client, OSINT connectors, Neo4j projection |
 | `graph` | Neo4j projection, backfill and graph queries |
 | `collab` | Comments, notifications, presence and Yjs document relay over STOMP |
 | `sharing` | Public share links |
@@ -85,6 +86,8 @@ the generated OpenAPI document (springdoc: `/api-docs`, `/swagger-ui`).
 | `/api/graph` | `GraphController` | Backlinks, unlinked mentions, related, neighbourhood, backfill, status |
 | `/api/note-properties`, `/api/property-queries` | `NotePropertyController`, `SavedPropertyQueryController` | Typed properties and saved queries |
 | `/api/knowledge`, `/api/knowledge/workspace-search`, `/api/knowledge/extract` | `SemanticKnowledgeController`, `WorkspaceSearchController`, `DocumentTextController` | Semantic search, suggested links, document text |
+| `/api/cti` | `CtiController` | Threat-intelligence objects, relationships, ingest, inference, notes, sightings, graph, changes, ATT&CK, enrichment connectors, STIX/MISP/CSV exchange, TAXII management, disclosure capsules ([Threat intelligence](../features/threat-intelligence.md)) |
+| `/api/taxii2/` | `TaxiiController` | TAXII 2.1 server, authenticated by per-collection partner tokens instead of the session |
 | `/api/templates` | `NoteTemplateController` | Note templates |
 | `/api/notes/{id}/export/markdown`, `/html`, `/api/notes/export/zip` | `NoteExportController` | Exports |
 | `/api/notes/{noteId}/comments` | `CommentController` | Comments |

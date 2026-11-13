@@ -15,6 +15,9 @@ const AWARENESS: Capability[] = ['files.pick', 'files.save', 'links.external'];
 const LIFE_OS: Capability[] = ['files.pick', 'files.save', 'backup.archive'];
 
 export const PLUGIN_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
+  // CTI pack: STIX/MISP export downloads, STIX import picks a file, capsules download.
+  'cti-dashboard': ['files.pick', 'files.save'],
+  'cti-disclosures': SAVE,
   // Self-hosted integrations that call remote services
   'feeds-reading-inbox': ['remote.fetch'],
   'web-archive-read-later': ['remote.fetch', 'links.external'],

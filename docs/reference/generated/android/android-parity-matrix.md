@@ -42,6 +42,18 @@ server (`online`).
 | `career-opportunities` | 1 view | CRUD (notes/state) | — | — | server state | queue | P07 | P13 |
 | `career-portfolio` | 1 view | CRUD (notes/state) | — | — | server state | queue | P07 | P13 |
 | `citation-manager` | 1 view | CRUD (notes/state) | — | desktop-native-services (server/remote service (P17)), external-links (Custom Tabs), file-download (share sheet / SAF create), file-picker (Storage Access Framework), notifications (POST_NOTIFICATIONS) | /api/workspaces/personal | online | P07 | P17 |
+| `cti-actors` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-campaigns` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-dashboard` | 5 views | CRUD (notes/state) | — | file-download (share sheet / SAF create), file-picker (Storage Access Framework) | /api/cti | queue | P07 | P15 |
+| `cti-disclosures` | 1 view | CRUD (notes/state) | — | file-download (share sheet / SAF create) | /api/cti | queue | P07 | P13 |
+| `cti-enrichment` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-identities` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-indicators` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-infrastructure` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-leads` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-malware` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-victims` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
+| `cti-watches` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
 | `daily-briefing` | 1 view | CRUD (notes/state) | — | external-links (Custom Tabs), file-download (share sheet / SAF create), file-picker (Storage Access Framework) | /api/newsletters/gmail, /api/notes, /api/workspaces/personal | online | P07 | P15 |
 | `daily-notes` | 1 view | CRUD (notes/state) | 1 editor | — | server state | queue | P05 | P13 |
 | `decision-journal` | 1 view | CRUD (notes/state) | — | file-download (share sheet / SAF create) | /api/notes, /api/workspaces/personal | queue | P05 | P13 |

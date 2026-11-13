@@ -27,6 +27,8 @@ public class SecurityConfig {
             .authorizeRequests(authz -> authz
                 // The STOMP interceptor authenticates CONNECT; public shares validate their stored grant.
                 .antMatchers("/ws", "/ws/**", "/api/s/**", "/api/plugin-state/callback/**").permitAll()
+                // TAXII partners authenticate with a collection token checked by TaxiiController.
+                .antMatchers("/api/taxii2/**").permitAll()
                 .antMatchers("/api/simple-health", "/api/simple-health/**").permitAll()
                 .antMatchers("/api/health", "/api/health/**").permitAll()
                 .antMatchers("/actuator/**", "/api/actuator/**").permitAll()

@@ -19,6 +19,7 @@ class StateHandler(BaseHTTPRequestHandler):
     records = {}
     writes = []
     notes = []
+    cti = []
 
     def log_message(self, *_args):
         pass
@@ -44,6 +45,17 @@ class StateHandler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             self.notes.append(body)
             return self.respond(201, {"id": len(self.notes), **body})
+        if parsed.path.startswith("/api/cti/"):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"]))) if self.headers.get("Content-Length") else None
+            self.cti.append((self.command, parsed.path, parse_qs(parsed.query), body))
+            if parsed.path == "/api/cti/ingest":
+                return self.respond(200, {"created": len(body.get("objects", [])), "updated": 0, "unchanged": 0,
+                                          "relationshipsCreated": len(body.get("relationships", [])), "results": []})
+            if parsed.path.endswith("/enrich") or parsed.path.endswith("/sightings") or parsed.path.endswith("/notes"):
+                return self.respond(200, {"ok": True, "body": body})
+            if parsed.path == "/api/cti/objects":
+                return self.respond(200, {"items": [], "total": 0, "page": 0, "limit": 25, "hasMore": False})
+            return self.respond(404, {"code": "CTI_NOT_FOUND"})
         prefix = "/api/workspaces/personal/plugin-state/"
         if not parsed.path.startswith(prefix):
             return self.respond(404, {"code": "NOT_FOUND"})
@@ -89,7 +101,41 @@ class ModuloClientTests(unittest.TestCase):
         StateHandler.records = {}
         StateHandler.writes = []
         StateHandler.notes = []
+        StateHandler.cti = []
         self.client = ModuloClient(self.base_url, "test-token")
+
+    def test_cti_search_and_ingest_use_the_owner_scoped_cti_api(self):
+        self.client.cti_search("evil[.]ink", kind="infrastructure", view="live-c2", limit=5)
+        method, path, params, _ = StateHandler.cti[-1]
+        self.assertEqual((method, path), ("GET", "/api/cti/objects"))
+        self.assertEqual(params, {"q": ["evil[.]ink"], "kind": ["infrastructure"], "view": ["live-c2"], "limit": ["5"]})
+        batch = {"source": "cron:test", "objects": [{"ref": "a", "kind": "actor", "name": "TronzitVeca", "attributes": {}}]}
+        self.assertEqual(self.client.cti_ingest(batch)["created"], 1)
+        self.assertEqual(StateHandler.cti[-1][3], batch)
+        with self.assertRaises(ModuloError):
+            self.client.cti_search(kind="persona")
+        with self.assertRaises(ModuloError):
+            self.client.cti_ingest({"source": "empty"})
+        with self.assertRaisesRegex(ModuloError, "CTI_NOT_FOUND"):
+            self.client.cti_get("00000000-0000-0000-0000-000000000000")
+        with self.assertRaises(ModuloError):
+            self.client.cti_get("../objects")
+
+    def test_cti_enrichment_sightings_and_notes(self):
+        object_id = "11111111-1111-1111-1111-111111111111"
+        self.client.cti_enrich(object_id, "crt.sh")
+        self.assertEqual(StateHandler.cti[-1][1], f"/api/cti/objects/{object_id}/enrich")
+        self.assertEqual(StateHandler.cti[-1][3], {"provider": "crt.sh", "force": False})
+        self.client.cti_add_sighting(object_id, "honeypot", 3, observed=["1.2.3.4"])
+        self.assertEqual(StateHandler.cti[-1][3], {"where": "honeypot", "count": 3, "observed": ["1.2.3.4"]})
+        self.client.cti_add_note(object_id, "Weak OPSEC", opinion="agree")
+        self.assertEqual(StateHandler.cti[-1][3], {"kind": "opinion", "body": "Weak OPSEC", "opinion": "agree"})
+        with self.assertRaises(ModuloError):
+            self.client.cti_enrich(object_id, "shodan")
+        with self.assertRaises(ModuloError):
+            self.client.cti_add_note(object_id, "x", opinion="maybe")
+        with self.assertRaises(ModuloError):
+            self.client.cti_add_sighting(object_id, count=0)
 
     def test_workspace_para_matches_ui_namespace(self):
         self.client.create_record("workspace-para", "data", "modulo.workspace.para", {"tasks": [{"title": "BROWSE-CAPTURE"}]})

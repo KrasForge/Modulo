@@ -1,0 +1,786 @@
+{
+  "version": 1,
+  "tlp": [
+    "clear",
+    "green",
+    "amber",
+    "amber+strict",
+    "red"
+  ],
+  "defaultTlp": "amber",
+  "kinds": {
+    "actor": {
+      "plugin": "cti-actors",
+      "title": "Threat actors",
+      "singular": "threat actor",
+      "group": "knowledge",
+      "stixType": "threat-actor",
+      "naturalKey": "name",
+      "statuses": [
+        "active",
+        "dormant",
+        "retired",
+        "unknown"
+      ],
+      "attributes": {
+        "aliases": {
+          "type": "list",
+          "label": "Aliases"
+        },
+        "attribution": {
+          "type": "text",
+          "label": "Attribution rationale"
+        },
+        "motivation": {
+          "type": "select",
+          "label": "Primary motivation",
+          "options": [
+            "accidental",
+            "coercion",
+            "dominance",
+            "ideology",
+            "notoriety",
+            "organizational-gain",
+            "personal-gain",
+            "personal-satisfaction",
+            "revenge",
+            "unpredictable"
+          ]
+        },
+        "sophistication": {
+          "type": "select",
+          "label": "Sophistication",
+          "options": [
+            "none",
+            "minimal",
+            "intermediate",
+            "advanced",
+            "expert",
+            "innovator",
+            "strategic"
+          ]
+        },
+        "resourceLevel": {
+          "type": "select",
+          "label": "Resource level",
+          "options": [
+            "individual",
+            "club",
+            "contest",
+            "team",
+            "organization",
+            "government"
+          ]
+        },
+        "ttps": {
+          "type": "list",
+          "label": "ATT&CK techniques",
+          "format": "attack-technique"
+        },
+        "goals": {
+          "type": "list",
+          "label": "Goals"
+        },
+        "auditThreatRefs": {
+          "type": "list",
+          "label": "Audit Core threat references"
+        }
+      }
+    },
+    "identity": {
+      "plugin": "cti-identities",
+      "title": "Identities & aliases",
+      "singular": "identity",
+      "group": "knowledge",
+      "stixType": "user-account",
+      "naturalKey": "identityType:value",
+      "statuses": [
+        "active",
+        "inactive",
+        "suspended",
+        "unknown"
+      ],
+      "attributes": {
+        "identityType": {
+          "type": "select",
+          "label": "Identity type",
+          "required": true,
+          "options": [
+            "email",
+            "handle",
+            "wallet",
+            "account",
+            "phone",
+            "pgp-key",
+            "domain-registrant",
+            "other"
+          ]
+        },
+        "value": {
+          "type": "text",
+          "label": "Value",
+          "required": true,
+          "observable": true
+        },
+        "platform": {
+          "type": "text",
+          "label": "Platform"
+        },
+        "chain": {
+          "type": "text",
+          "label": "Blockchain (wallets)"
+        },
+        "profileUrl": {
+          "type": "url",
+          "label": "Profile URL"
+        }
+      }
+    },
+    "infrastructure": {
+      "plugin": "cti-infrastructure",
+      "title": "Infrastructure",
+      "singular": "infrastructure",
+      "group": "knowledge",
+      "stixType": "infrastructure",
+      "naturalKey": "infraKind:value",
+      "statuses": [
+        "live",
+        "dead",
+        "sinkholed",
+        "parked",
+        "unknown"
+      ],
+      "attributes": {
+        "infraKind": {
+          "type": "select",
+          "label": "Kind",
+          "required": true,
+          "options": [
+            "c2",
+            "blob-host",
+            "dead-drop",
+            "domain",
+            "ip",
+            "url",
+            "registrar",
+            "asn",
+            "hosting-provider",
+            "repository",
+            "other"
+          ]
+        },
+        "value": {
+          "type": "text",
+          "label": "Value",
+          "required": true,
+          "observable": true
+        },
+        "hosting": {
+          "type": "text",
+          "label": "Hosting provider"
+        },
+        "asn": {
+          "type": "text",
+          "label": "ASN"
+        },
+        "registrar": {
+          "type": "text",
+          "label": "Registrar"
+        },
+        "country": {
+          "type": "text",
+          "label": "Country"
+        }
+      }
+    },
+    "malware": {
+      "plugin": "cti-malware",
+      "title": "Malware & tooling",
+      "singular": "malware record",
+      "group": "knowledge",
+      "stixType": "malware",
+      "naturalKey": "sha256|name",
+      "statuses": [
+        "active",
+        "inactive",
+        "unknown"
+      ],
+      "attributes": {
+        "role": {
+          "type": "select",
+          "label": "Role",
+          "options": [
+            "family",
+            "sample",
+            "loader",
+            "dropper",
+            "builder",
+            "stealer",
+            "backdoor",
+            "rat",
+            "wiper",
+            "other"
+          ]
+        },
+        "sha256": {
+          "type": "text",
+          "label": "SHA-256",
+          "format": "sha256",
+          "observable": true
+        },
+        "family": {
+          "type": "text",
+          "label": "Family"
+        },
+        "capabilities": {
+          "type": "list",
+          "label": "Capabilities"
+        },
+        "sampleLocation": {
+          "type": "text",
+          "label": "Sample location (reference only)"
+        },
+        "evidenceRefs": {
+          "type": "list",
+          "label": "Evidence library record IDs"
+        },
+        "ttps": {
+          "type": "list",
+          "label": "ATT&CK techniques",
+          "format": "attack-technique"
+        }
+      }
+    },
+    "indicator": {
+      "plugin": "cti-indicators",
+      "title": "Indicators",
+      "singular": "indicator",
+      "group": "knowledge",
+      "stixType": "indicator",
+      "naturalKey": "indicatorType:value",
+      "statuses": [
+        "active",
+        "revoked",
+        "expired"
+      ],
+      "attributes": {
+        "indicatorType": {
+          "type": "select",
+          "label": "Indicator type",
+          "required": true,
+          "options": [
+            "domain",
+            "ipv4",
+            "ipv6",
+            "url",
+            "email",
+            "sha256",
+            "sha1",
+            "md5",
+            "wallet",
+            "filename",
+            "stix-pattern",
+            "yara",
+            "sigma",
+            "other"
+          ]
+        },
+        "value": {
+          "type": "text",
+          "label": "Value",
+          "required": true,
+          "observable": true
+        },
+        "pattern": {
+          "type": "text",
+          "label": "STIX pattern (generated when empty)"
+        },
+        "validFrom": {
+          "type": "date",
+          "label": "Valid from"
+        },
+        "validUntil": {
+          "type": "date",
+          "label": "Valid until"
+        },
+        "source": {
+          "type": "text",
+          "label": "Source"
+        },
+        "toIds": {
+          "type": "boolean",
+          "label": "Detection-ready (MISP to_ids)"
+        }
+      }
+    },
+    "campaign": {
+      "plugin": "cti-campaigns",
+      "title": "Campaigns & clusters",
+      "singular": "campaign",
+      "group": "knowledge",
+      "stixType": "campaign",
+      "naturalKey": "name",
+      "statuses": [
+        "active",
+        "concluded",
+        "suspected"
+      ],
+      "attributes": {
+        "clusterType": {
+          "type": "select",
+          "label": "Cluster type",
+          "options": [
+            "campaign",
+            "intrusion-set",
+            "cluster",
+            "lure-set"
+          ]
+        },
+        "branch": {
+          "type": "text",
+          "label": "Branch"
+        },
+        "objective": {
+          "type": "text",
+          "label": "Objective"
+        },
+        "ttps": {
+          "type": "list",
+          "label": "ATT&CK techniques",
+          "format": "attack-technique"
+        }
+      }
+    },
+    "victim": {
+      "plugin": "cti-victims",
+      "title": "Victims & exposure",
+      "singular": "victim",
+      "group": "knowledge",
+      "stixType": "identity",
+      "naturalKey": "name",
+      "private": true,
+      "statuses": [
+        "exposed",
+        "notified",
+        "remediated",
+        "unknown"
+      ],
+      "attributes": {
+        "redacted": {
+          "type": "boolean",
+          "label": "Redact in every export"
+        },
+        "exposureType": {
+          "type": "select",
+          "label": "Exposure",
+          "options": [
+            "credential-theft",
+            "wallet-drain",
+            "malware-infection",
+            "stealer-log",
+            "data-leak",
+            "phishing",
+            "other"
+          ]
+        },
+        "notified": {
+          "type": "boolean",
+          "label": "Notified"
+        },
+        "notifiedAt": {
+          "type": "date",
+          "label": "Notified on"
+        },
+        "sector": {
+          "type": "text",
+          "label": "Sector"
+        },
+        "contactChannel": {
+          "type": "text",
+          "label": "Contact channel (never exported)",
+          "private": true
+        }
+      }
+    },
+    "lead": {
+      "plugin": "cti-leads",
+      "title": "Leads",
+      "singular": "lead",
+      "group": "workflow",
+      "naturalKey": "name",
+      "statuses": [
+        "open",
+        "in-progress",
+        "blocked",
+        "closed"
+      ],
+      "attributes": {
+        "number": {
+          "type": "text",
+          "label": "Lead number"
+        },
+        "priority": {
+          "type": "select",
+          "label": "Priority",
+          "options": [
+            "P1",
+            "P2",
+            "P3",
+            "P4"
+          ]
+        },
+        "nextStep": {
+          "type": "text",
+          "label": "Next step"
+        },
+        "outcome": {
+          "type": "text",
+          "label": "Outcome"
+        },
+        "due": {
+          "type": "date",
+          "label": "Due"
+        }
+      }
+    },
+    "watch": {
+      "plugin": "cti-watches",
+      "title": "Watches",
+      "singular": "watch",
+      "group": "workflow",
+      "naturalKey": "watchType:target",
+      "statuses": [
+        "active",
+        "paused",
+        "failing",
+        "retired"
+      ],
+      "attributes": {
+        "watchType": {
+          "type": "select",
+          "label": "Watch type",
+          "required": true,
+          "options": [
+            "identity",
+            "wallet",
+            "domain",
+            "certificate-transparency",
+            "dead-drop",
+            "blob-host",
+            "repository",
+            "package-registry",
+            "feed",
+            "other"
+          ]
+        },
+        "target": {
+          "type": "text",
+          "label": "Target",
+          "required": true
+        },
+        "schedule": {
+          "type": "text",
+          "label": "Schedule (cron)"
+        },
+        "runner": {
+          "type": "text",
+          "label": "Runner (host or script reference)"
+        },
+        "lastRunAt": {
+          "type": "datetime",
+          "label": "Last run"
+        },
+        "lastResult": {
+          "type": "text",
+          "label": "Last result"
+        },
+        "findings": {
+          "type": "number",
+          "label": "Findings delivered"
+        }
+      }
+    },
+    "enrichment": {
+      "plugin": "cti-enrichment",
+      "title": "Enrichment log",
+      "singular": "enrichment",
+      "group": "workflow",
+      "naturalKey": "provider:query",
+      "statuses": [
+        "done",
+        "failed",
+        "stale"
+      ],
+      "attributes": {
+        "provider": {
+          "type": "select",
+          "label": "Provider",
+          "required": true,
+          "options": [
+            "urlscan",
+            "virustotal",
+            "crt.sh",
+            "whois",
+            "passive-dns",
+            "shodan",
+            "censys",
+            "github",
+            "gitlab",
+            "blockchain-explorer",
+            "search-engine",
+            "other"
+          ]
+        },
+        "query": {
+          "type": "text",
+          "label": "Query",
+          "required": true
+        },
+        "performedAt": {
+          "type": "datetime",
+          "label": "Performed"
+        },
+        "resultSummary": {
+          "type": "text",
+          "label": "Result summary"
+        },
+        "resultUrl": {
+          "type": "url",
+          "label": "Result URL"
+        }
+      }
+    },
+    "disclosure": {
+      "plugin": "cti-disclosures",
+      "title": "Disclosures",
+      "singular": "disclosure",
+      "group": "workflow",
+      "naturalKey": "name",
+      "statuses": [
+        "draft",
+        "sent",
+        "acknowledged",
+        "actioned",
+        "rejected"
+      ],
+      "attributes": {
+        "recipient": {
+          "type": "text",
+          "label": "Recipient"
+        },
+        "disclosureType": {
+          "type": "select",
+          "label": "Type",
+          "options": [
+            "vendor-report",
+            "takedown-request",
+            "law-enforcement",
+            "advisory",
+            "community-share"
+          ]
+        },
+        "tlpCeiling": {
+          "type": "select",
+          "label": "Capsule TLP ceiling",
+          "options": [
+            "clear",
+            "green",
+            "amber",
+            "amber+strict",
+            "red"
+          ]
+        },
+        "includeVictims": {
+          "type": "boolean",
+          "label": "Include redacted victims in capsule"
+        },
+        "sentAt": {
+          "type": "date",
+          "label": "Sent on"
+        },
+        "reference": {
+          "type": "text",
+          "label": "Ticket or reference"
+        },
+        "capsuleSha256": {
+          "type": "text",
+          "label": "Last capsule SHA-256",
+          "readOnly": true
+        },
+        "capsuleAt": {
+          "type": "datetime",
+          "label": "Last capsule built",
+          "readOnly": true
+        }
+      }
+    }
+  },
+  "relationships": {
+    "uses": {
+      "from": [
+        "actor",
+        "campaign",
+        "malware"
+      ],
+      "to": [
+        "malware",
+        "infrastructure",
+        "identity"
+      ]
+    },
+    "attributed-to": {
+      "from": [
+        "campaign",
+        "identity",
+        "infrastructure",
+        "malware",
+        "actor"
+      ],
+      "to": [
+        "actor",
+        "campaign"
+      ]
+    },
+    "alias-of": {
+      "from": [
+        "identity",
+        "actor"
+      ],
+      "to": [
+        "identity",
+        "actor"
+      ]
+    },
+    "communicates-with": {
+      "from": [
+        "malware",
+        "infrastructure"
+      ],
+      "to": [
+        "infrastructure"
+      ]
+    },
+    "resolves-to": {
+      "from": [
+        "infrastructure"
+      ],
+      "to": [
+        "infrastructure"
+      ]
+    },
+    "rotation-of": {
+      "from": [
+        "infrastructure"
+      ],
+      "to": [
+        "infrastructure"
+      ]
+    },
+    "hosts": {
+      "from": [
+        "infrastructure"
+      ],
+      "to": [
+        "malware",
+        "infrastructure"
+      ]
+    },
+    "drops": {
+      "from": [
+        "malware"
+      ],
+      "to": [
+        "malware"
+      ]
+    },
+    "variant-of": {
+      "from": [
+        "malware"
+      ],
+      "to": [
+        "malware"
+      ]
+    },
+    "controls": {
+      "from": [
+        "actor",
+        "identity"
+      ],
+      "to": [
+        "infrastructure",
+        "identity"
+      ]
+    },
+    "targets": {
+      "from": [
+        "actor",
+        "campaign",
+        "malware"
+      ],
+      "to": [
+        "victim"
+      ]
+    },
+    "indicates": {
+      "from": [
+        "indicator"
+      ],
+      "to": [
+        "actor",
+        "campaign",
+        "malware",
+        "infrastructure",
+        "identity"
+      ]
+    },
+    "based-on": {
+      "from": [
+        "indicator"
+      ],
+      "to": [
+        "infrastructure",
+        "malware",
+        "identity"
+      ]
+    },
+    "part-of": {
+      "from": [
+        "actor",
+        "identity",
+        "infrastructure",
+        "malware",
+        "indicator",
+        "victim"
+      ],
+      "to": [
+        "campaign"
+      ]
+    },
+    "concerns": {
+      "from": [
+        "lead",
+        "watch",
+        "disclosure"
+      ],
+      "to": [
+        "*"
+      ]
+    },
+    "enriches": {
+      "from": [
+        "enrichment"
+      ],
+      "to": [
+        "*"
+      ]
+    },
+    "related-to": {
+      "from": [
+        "*"
+      ],
+      "to": [
+        "*"
+      ]
+    }
+  }
+}

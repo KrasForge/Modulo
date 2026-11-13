@@ -35,6 +35,7 @@ the end.
 | [Deliberate Learning](#deliberate-learning) | `pack-deliberate-learning` | education | none |
 | [Self-hosted Essentials](#self-hosted-essentials) | `pack-self-hosted-essentials` | productivity | none |
 | [Connected Foundations](#connected-foundations) | `pack-connected-foundations` | productivity | none |
+| [Threat Intelligence Workbench](#threat-intelligence-workbench) | `pack-threat-intelligence` | security | none |
 | [Digital Security & Identity](#digital-security--identity) | `pack-digital-security-identity` | security | none |
 | [Personal Finance & Wealth](#personal-finance--wealth) | `pack-personal-finance-wealth` | wealth | none |
 | [Research Evidence Lab](#research-evidence-lab) | `pack-research-evidence-lab` | evidence | none |
@@ -125,6 +126,26 @@ Shared services that other plugins build on:
   Rankings, Universal Attachments, and Reminders & Notifications
   (`HIGHEST_VALUE_FOUNDATION_PLUGIN_IDS` in
   [`foundationTools.ts`](../../frontend/src/features/workspace/foundationTools.ts)).
+
+## Threat Intelligence Workbench
+
+A STIX 2.1-aligned threat-intelligence knowledge base with an analyst loop. All
+records live in the backend CTI module (`/api/cti`), not in plugin state; see
+[Threat intelligence](../features/threat-intelligence.md).
+
+**Plugins:**
+
+- Knowledge graph: CTI Threat Actors, CTI Identities & Aliases, CTI Infrastructure,
+  CTI Malware & Tooling (installs Sources & Bibliography for sample evidence),
+  CTI Indicators, CTI Campaigns & Clusters, CTI Victims & Exposure
+- Analyst loop: CTI Leads, CTI Watches, CTI Enrichment Log, CTI Disclosures
+- CTI Dashboard, Graph & Exchange (installs every CTI plugin): dashboard, graph, ATT&CK matrix, STIX/MISP/CSV exchange and TAXII 2.1
+- Reused: Graph, Timeline, Saved Searches, Tags, Executable Runbooks, What Changed?,
+  Workspace Capsules
+
+**Privacy boundary.** Victims default to TLP:RED and are redacted in every export;
+their contact channel is never exported. Leads, watches and enrichment are never
+exported. Ingest never lowers a record's TLP.
 
 ## Digital Security & Identity
 

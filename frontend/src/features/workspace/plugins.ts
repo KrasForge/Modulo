@@ -2,6 +2,20 @@ import { AWARENESS_PLUGINS } from './awareness/plugins';
 // Sample marketplace catalogue. The plugin store is not yet wired to a backend
 // endpoint, so this list is static and install state is kept client-side.
 import {
+  Crosshair as CtiActorIcon,
+  Fingerprint as CtiIdentityIcon,
+  Network as CtiInfrastructureIcon,
+  Bug as CtiMalwareIcon,
+  ShieldAlert as CtiIndicatorIcon,
+  Flag as CtiCampaignIcon,
+  UserX as CtiVictimIcon,
+  Search as CtiLeadIcon,
+  Eye as CtiWatchIcon,
+  FileWarning as CtiEnrichmentIcon,
+  Megaphone as CtiDisclosureIcon,
+  Radar as CtiDashboardIcon,
+} from 'lucide-react';
+import {
   Archive,
   ArrowDownToLine,
   BookCopy,
@@ -179,6 +193,24 @@ export const SECURITY_INVENTORY_PLUGIN_ID = 'security-inventory';
 export const SECURITY_RESILIENCE_PLUGIN_ID = 'security-resilience';
 export const SECURITY_INCIDENTS_PLUGIN_ID = 'security-incidents';
 export const SECURITY_DASHBOARD_PLUGIN_ID = 'security-dashboard';
+/** CTI pack: STIX-aligned threat-intelligence knowledge graph and analyst loop. */
+export const CTI_ACTORS_PLUGIN_ID = 'cti-actors';
+export const CTI_IDENTITIES_PLUGIN_ID = 'cti-identities';
+export const CTI_INFRASTRUCTURE_PLUGIN_ID = 'cti-infrastructure';
+export const CTI_MALWARE_PLUGIN_ID = 'cti-malware';
+export const CTI_INDICATORS_PLUGIN_ID = 'cti-indicators';
+export const CTI_CAMPAIGNS_PLUGIN_ID = 'cti-campaigns';
+export const CTI_VICTIMS_PLUGIN_ID = 'cti-victims';
+export const CTI_LEADS_PLUGIN_ID = 'cti-leads';
+export const CTI_WATCHES_PLUGIN_ID = 'cti-watches';
+export const CTI_ENRICHMENT_PLUGIN_ID = 'cti-enrichment';
+export const CTI_DISCLOSURES_PLUGIN_ID = 'cti-disclosures';
+export const CTI_DASHBOARD_PLUGIN_ID = 'cti-dashboard';
+export const CTI_PLUGIN_IDS = [
+  CTI_ACTORS_PLUGIN_ID, CTI_IDENTITIES_PLUGIN_ID, CTI_INFRASTRUCTURE_PLUGIN_ID, CTI_MALWARE_PLUGIN_ID,
+  CTI_INDICATORS_PLUGIN_ID, CTI_CAMPAIGNS_PLUGIN_ID, CTI_VICTIMS_PLUGIN_ID, CTI_LEADS_PLUGIN_ID,
+  CTI_WATCHES_PLUGIN_ID, CTI_ENRICHMENT_PLUGIN_ID, CTI_DISCLOSURES_PLUGIN_ID, CTI_DASHBOARD_PLUGIN_ID,
+] as const;
 export const WEALTH_BALANCE_PLUGIN_ID = 'wealth-balance-sheet';
 export const WEALTH_CASHFLOW_PLUGIN_ID = 'wealth-cashflow';
 export const WEALTH_INVESTMENTS_PLUGIN_ID = 'wealth-investments-goals';
@@ -434,6 +466,18 @@ export const PLUGINS: PluginInfo[] = [
   { id: SECURITY_INVENTORY_PLUGIN_ID, name: 'Security Inventory', desc: 'Account, device, public-wallet, and identity posture metadata without credentials or recovery secrets.', category: 'security', subcategory: 'Inventory', downloads: '0', rating: 'New', icon: ShieldAlert },
   { id: SECURITY_RESILIENCE_PLUGIN_ID, name: 'Keys, Backups & Recovery', desc: 'Rotation reminders, backup verification, recovery exercises, and emergency-access checks.', category: 'security', subcategory: 'Resilience', downloads: '0', rating: 'New', icon: RefreshCw },
   { id: SECURITY_INCIDENTS_PLUGIN_ID, name: 'Incidents & Procedures', desc: 'Security incidents, response procedures, exercises, trusted contacts, and follow-up actions.', category: 'security', subcategory: 'Response', downloads: '0', rating: 'New', icon: ShieldAlert },
+  { id: CTI_ACTORS_PLUGIN_ID, name: 'CTI Threat Actors', desc: 'Threat actors and personas: aliases, attribution with confidence, motivation, sophistication and ATT&CK techniques.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiActorIcon },
+  { id: CTI_IDENTITIES_PLUGIN_ID, name: 'CTI Identities & Aliases', desc: 'Observable identities — emails, handles, wallets, accounts — linked by alias-of and attributed to actors, so one actor is never re-derived.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiIdentityIcon },
+  { id: CTI_INFRASTRUCTURE_PLUGIN_ID, name: 'CTI Infrastructure', desc: 'C2, blob hosts, dead drops, domains, IPs, registrars and ASNs with live/dead status and rotation chains.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiInfrastructureIcon },
+  { id: CTI_MALWARE_PLUGIN_ID, name: 'CTI Malware & Tooling', desc: 'Families, samples, loaders and builders by SHA-256, capabilities and links to evidence-library records.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiMalwareIcon },
+  { id: CTI_INDICATORS_PLUGIN_ID, name: 'CTI Indicators', desc: 'Shareable IOCs with TLP, confidence, validity windows and generated STIX patterns.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiIndicatorIcon },
+  { id: CTI_CAMPAIGNS_PLUGIN_ID, name: 'CTI Campaigns & Clusters', desc: 'Campaigns, intrusion sets, clusters and lure sets with timeframe, branch and linked actors and infrastructure.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiCampaignIcon },
+  { id: CTI_VICTIMS_PLUGIN_ID, name: 'CTI Victims & Exposure', desc: 'Privacy-gated victims and exposures: TLP:RED by default, redacted in every export, contact channels never exported.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiVictimIcon },
+  { id: CTI_LEADS_PLUGIN_ID, name: 'CTI Leads', desc: 'Open and closed leads with priority, next step and outcome, one hop from everything they concern.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiLeadIcon },
+  { id: CTI_WATCHES_PLUGIN_ID, name: 'CTI Watches', desc: 'Identity, wallet, domain, certificate-transparency and dead-drop watches whose cron runs feed the graph through the ingest API.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiWatchIcon },
+  { id: CTI_ENRICHMENT_PLUGIN_ID, name: 'CTI Enrichment Log', desc: 'Every OSINT lookup attached to the record it enriched — provenance, and no repeated work.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiEnrichmentIcon },
+  { id: CTI_DISCLOSURES_PLUGIN_ID, name: 'CTI Disclosures', desc: 'Vendor and law-enforcement reports and takedown requests, exported as TLP-capped STIX capsules with a SHA-256 receipt.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiDisclosureIcon },
+  { id: CTI_DASHBOARD_PLUGIN_ID, name: 'CTI Dashboard, Graph & Exchange', desc: 'Live C2, open and stale leads, unattributed identities, what changed, the knowledge graph, runbooks and STIX 2.1 / MISP exchange.', category: 'security', subcategory: 'Threat Intelligence', downloads: '0', rating: 'New', icon: CtiDashboardIcon },
   { id: SECURITY_DASHBOARD_PLUGIN_ID, name: 'Security Command Center', desc: 'Review due dates, failed checks, at-risk assets, recovery readiness, and incident status.', category: 'security', subcategory: 'Dashboard', downloads: '0', rating: 'New', icon: LayoutDashboard },
   { id: WEALTH_BALANCE_PLUGIN_ID, name: 'Accounts, Assets & Liabilities', desc: 'Provider-neutral accounts, assets, liabilities, valuations, and ownership metadata.', category: 'wealth', subcategory: 'Balance Sheet', downloads: '0', rating: 'New', icon: Landmark },
   { id: WEALTH_CASHFLOW_PLUGIN_ID, name: 'Cash Flow & Savings', desc: 'Recurring income, expenses, transfers, budgets, and savings contributions.', category: 'wealth', subcategory: 'Cash Flow', downloads: '0', rating: 'New', icon: PiggyBank },

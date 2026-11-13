@@ -80,6 +80,9 @@ export interface ViewContribution {
   parentViewId?: string;
   /** Optional group heading inside a mode's secondary sidebar. */
   section?: string;
+  /** Optional second-level heading inside `section`, rendered indented under it.
+   *  Views of one subsection must be contiguous in `order`. */
+  subsection?: string;
 }
 
 export interface NotePanelContribution {

@@ -55,6 +55,8 @@ public class CloudSecurityConfig {
             .authorizeRequests(authz -> authz
                 // The STOMP interceptor authenticates CONNECT; public shares validate their stored grant.
                 .antMatchers("/ws", "/ws/**", "/api/s/**", "/api/plugin-state/callback/**").permitAll()
+                // TAXII partners authenticate with a collection token checked by TaxiiController.
+                .antMatchers("/api/taxii2/**").permitAll()
                 // Public health and monitoring endpoints (with restrictions)
                 .antMatchers("/api/health/status", "/api/simple-health").permitAll()
                 .antMatchers("/actuator/health", "/actuator/info").permitAll()
@@ -92,7 +94,8 @@ public class CloudSecurityConfig {
                     "/api/health/**", 
                     "/actuator/health", 
                     "/actuator/info",
-                    "/api/auth/mobile/**" // Mobile auth endpoints
+                    "/api/auth/mobile/**", // Mobile auth endpoints
+                    "/api/taxii2/**" // Token-authenticated TAXII clients, no browser session
                 )
             )
 

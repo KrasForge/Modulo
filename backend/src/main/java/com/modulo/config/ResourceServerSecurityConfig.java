@@ -63,12 +63,19 @@ public class ResourceServerSecurityConfig {
         return http.build();
     }
 
-    /** Only handle requests that present a bearer token; everything else falls through to the session chain. */
+    /**
+     * Only handle requests that present a bearer token; everything else falls through to the session chain.
+     * TAXII requests carry a collection token, not a Keycloak JWT, and are authenticated by TaxiiController.
+     */
     private RequestMatcher bearerTokenMatcher() {
         return request -> {
             String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-            return header != null && header.regionMatches(true, 0, "Bearer ", 0, 7);
+            return header != null && header.regionMatches(true, 0, "Bearer ", 0, 7) && !isTaxii(request.getRequestURI());
         };
+    }
+
+    static boolean isTaxii(String uri) {
+        return uri != null && uri.contains("/api/taxii2/");
     }
 
     @Bean
