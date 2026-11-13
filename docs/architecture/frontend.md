@@ -137,6 +137,10 @@ every bundled plugin with metadata, dependencies and a lazy `load()`.
 - Views declare an optional `mode` (a domain such as `productivity`, `audit`,
   `music`); views with a mode are grouped under that domain's hub instead of the
   main sidebar. `parentViewId` folds a route into a parent's secondary sidebar.
+  Inside a hub, `section` groups views under a heading and `subsection` nests
+  an indented second-level heading inside that section (the Threat Intelligence
+  section uses it for Adversaries, Observables, Investigation and so on). Views
+  of one subsection must be contiguous in `order`.
 - Plugins declare the device capabilities they need (`capabilities`), checked
   against the platform table below.
 
