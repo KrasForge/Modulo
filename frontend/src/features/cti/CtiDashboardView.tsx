@@ -14,7 +14,8 @@ const WINDOWS = [
 ] as const;
 
 const PANELS: SavedView[] = ['live-c2', 'open-leads', 'unattributed-identities', 'stale-leads', 'unhealthy-watches', 'expiring-indicators', 'decayed-indicators', 'unnotified-victims'];
-const KNOWLEDGE: CtiKind[] = ['actor', 'identity', 'infrastructure', 'malware', 'indicator', 'campaign', 'victim'];
+// Same order as the sidebar: adversaries, observables, victims.
+const KNOWLEDGE: CtiKind[] = ['actor', 'campaign', 'malware', 'identity', 'infrastructure', 'indicator', 'victim'];
 
 /** CTI overview: counts, the saved analyst queues and the "What changed?" briefing. */
 export function CtiDashboardView({ data, navigateView }: WorkspaceViewProps) {

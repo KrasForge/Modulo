@@ -14,11 +14,18 @@ describe('CTI pack plugins', () => {
     for (const id of CTI_PLUGIN_IDS) expect(runtime.isActive(id), id).toBe(true);
     expect(runtime.isActive('evidence-library')).toBe(true);
     const tabs = hubTabs(runtime.contributions().views, 'work').filter(view => view.mode === 'cti');
-    expect(tabs.map(view => view.id)).toEqual([
-      'cti-dashboard', 'cti-graph', 'cti-attack', 'cti-actors', 'cti-identities', 'cti-infrastructure', 'cti-malware', 'cti-indicators',
-      'cti-campaigns', 'cti-victims', 'cti-leads', 'cti-watches', 'cti-enrichment', 'cti-disclosures', 'cti-exchange', 'cti-taxii',
+    expect(tabs.map(view => [viewSectionLabel(view), view.id])).toEqual([
+      ['Threat Intelligence', 'cti-dashboard'], ['Threat Intelligence', 'cti-graph'], ['Threat Intelligence', 'cti-attack'],
+      ['CTI · Adversaries', 'cti-actors'], ['CTI · Adversaries', 'cti-campaigns'], ['CTI · Adversaries', 'cti-malware'],
+      ['CTI · Observables', 'cti-identities'], ['CTI · Observables', 'cti-infrastructure'], ['CTI · Observables', 'cti-indicators'],
+      ['CTI · Investigation', 'cti-leads'], ['CTI · Investigation', 'cti-watches'], ['CTI · Investigation', 'cti-enrichment'],
+      ['CTI · Victims & disclosure', 'cti-victims'], ['CTI · Victims & disclosure', 'cti-disclosures'],
+      ['CTI · Exchange', 'cti-exchange'], ['CTI · Exchange', 'cti-taxii'],
     ]);
-    expect(new Set(tabs.map(viewSectionLabel))).toEqual(new Set(['Threat Intelligence']));
+    // The groups sit together inside Work, between Smart Contract Auditing and Business Admin.
+    const work = hubTabs(runtime.contributions().views, 'work').map(viewSectionLabel);
+    const first = work.indexOf('Threat Intelligence');
+    expect(work.slice(first, first + tabs.length).every(section => section === 'Threat Intelligence' || section?.startsWith('CTI · '))).toBe(true);
     await runtime.dispose();
   });
 
