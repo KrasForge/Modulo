@@ -92,7 +92,7 @@ def cti_get(object_id: str) -> dict:
 
 @mcp.tool()
 def cti_ingest(batch: dict[str, Any]) -> dict:
-    """Record findings as CTI records. batch = {source, objects:[{ref, kind, name?, status?, tlp?, confidence?, attributes, labels?, firstSeen?, lastSeen?}], relationships:[{source, target, type}], watch?:{watchType, target, result}}. Endpoints are batch refs, record ids, or {kind, key} natural keys such as {"kind":"actor","key":"tronzitveca"} or {"kind":"identity","key":"handle:apollo1030109"}. Idempotent: re-sending changes nothing; lists are unioned and TLP is never lowered."""
+    """Record findings as CTI records. batch = {source, objects:[{ref, kind, name?, status?, tlp?, confidence?, attributes, labels?, firstSeen?, lastSeen?}], relationships:[{source, target, type}], sightings?:[{target, firstSeen?, lastSeen?, count?, where?, observed?}], watch?:{watchType, target, result}}. Endpoints are batch refs, record ids, or {kind, key} natural keys such as {"kind":"actor","key":"tronzitveca"} or {"kind":"identity","key":"handle:apollo1030109"}. Idempotent: re-sending changes nothing; lists are unioned and TLP is never lowered."""
     return ModuloClient().cti_ingest(batch)
 
 
@@ -119,6 +119,25 @@ def cti_summary() -> dict:
 def cti_graph(focus: str | None = None, depth: int = 2) -> dict:
     """The typed neighbourhood of a CTI record (or the recent overview) as nodes and edges."""
     return ModuloClient().cti_graph(focus, depth)
+
+
+@mcp.tool()
+def cti_enrich(object_id: str, provider: str, force: bool = False) -> dict:
+    """Run a one-click OSINT lookup on a CTI record: provider crt.sh (domains), urlscan (domains, IPs, URLs), passive-dns (domains, IPs) or blockchain-explorer (TRON, Bitcoin, Ethereum wallets). The lookup is logged and discovered hostnames/resolutions are linked. A repeat within 10 minutes returns the logged result unless force is true."""
+    return ModuloClient().cti_enrich(object_id, provider, force)
+
+
+@mcp.tool()
+def cti_add_sighting(object_id: str, where: str = "", count: int = 1, first_seen: str | None = None,
+                     last_seen: str | None = None, observed: list[str] | None = None) -> dict:
+    """Record that a CTI record (indicator, infrastructure, malware, identity, actor, campaign) was seen, and where. Sightings drive indicator scores, which decay without them."""
+    return ModuloClient().cti_add_sighting(object_id, where, count, first_seen, last_seen, observed)
+
+
+@mcp.tool()
+def cti_add_note(object_id: str, body: str, opinion: str | None = None, tlp: str | None = None) -> dict:
+    """Attach an analyst note to a CTI record, or an opinion (strongly-disagree … strongly-agree) when opinion is given."""
+    return ModuloClient().cti_add_note(object_id, body, opinion, tlp)
 
 
 if __name__ == "__main__":

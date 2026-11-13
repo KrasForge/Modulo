@@ -29,7 +29,8 @@ class CtiControllerTest {
   @BeforeEach
   void setUp() {
     when(users.requireUserId()).thenReturn(7L);
-    mvc = MockMvcBuilders.standaloneSetup(new CtiController(cti, exports, users))
+    mvc = MockMvcBuilders.standaloneSetup(new CtiController(cti, exports, mock(CtiCsvImport.class),
+            mock(CtiEnrichmentService.class), mock(CtiTaxiiService.class), users))
         .defaultRequest(get("/").accept(MediaType.APPLICATION_JSON)).build();
   }
 

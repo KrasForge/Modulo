@@ -45,12 +45,14 @@ public class CtiExportService {
 
   private final CtiService cti;
   private final CtiTaxonomy taxonomy;
+  private final CtiAttackLibrary attack;
   private final ObjectMapper json;
   private final ObjectMapper canonical;
 
-  public CtiExportService(CtiService cti, CtiTaxonomy taxonomy, ObjectMapper json) {
+  public CtiExportService(CtiService cti, CtiTaxonomy taxonomy, CtiAttackLibrary attack, ObjectMapper json) {
     this.cti = cti;
     this.taxonomy = taxonomy;
+    this.attack = attack;
     this.json = json;
     this.canonical = json.copy().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
   }
@@ -65,7 +67,8 @@ public class CtiExportService {
 
   // ------------------------------------------------------------------ selection
 
-  private record Selection(List<Map<String, Object>> objects, List<Map<String, Object>> relationships) {}
+  private record Selection(List<Map<String, Object>> objects, List<Map<String, Object>> relationships,
+      List<Map<String, Object>> notes, List<Map<String, Object>> sightings) {}
 
   private Selection select(long owner, Options options) {
     int ceiling = CtiTaxonomy.tlpRank(options.tlpCeiling());
@@ -84,7 +87,12 @@ public class CtiExportService {
     for (var rel : cti.allRelationships(owner))
       if (kept.contains((UUID) rel.get("sourceId")) && kept.contains((UUID) rel.get("targetId"))
           && CtiTaxonomy.tlpRank((String) rel.get("tlp")) <= ceiling) relationships.add(rel);
-    return new Selection(objects, relationships);
+    List<Map<String, Object>> notes = new ArrayList<>();
+    for (var note : cti.allNotes(owner))
+      if (kept.contains((UUID) note.get("objectId")) && CtiTaxonomy.tlpRank((String) note.get("tlp")) <= ceiling) notes.add(note);
+    List<Map<String, Object>> sightings = new ArrayList<>();
+    for (var sighting : cti.sightings(owner, null)) if (kept.contains((UUID) sighting.get("objectId"))) sightings.add(sighting);
+    return new Selection(objects, relationships, notes, sightings);
   }
 
   // ------------------------------------------------------------------ STIX export
@@ -105,7 +113,7 @@ public class CtiExportService {
       markings.add((String) object.get("tlp"));
     }
     for (var object : selection.objects()) {
-      if (!"actor".equals(object.get("kind")) && !"campaign".equals(object.get("kind"))) continue;
+      if (!Set.of("actor", "campaign", "malware").contains((String) object.get("kind"))) continue;
       for (JsonNode technique : ((JsonNode) object.get("attributes")).path("ttps")) {
         String pattern = attackPattern(technique.asText(), out);
         Map<String, Object> rel = base("relationship",
@@ -134,7 +142,53 @@ public class CtiExportService {
       if (rel.get("firstSeen") != null) stix.put("start_time", stamp((String) rel.get("firstSeen")));
       if (rel.get("lastSeen") != null) stix.put("stop_time", stamp((String) rel.get("lastSeen")));
       stix.put("object_marking_refs", List.of(marking((String) rel.get("tlp"))));
+      if (rel.get("inferredBy") != null) stix.put("x_modulo_inferred_by", rel.get("inferredBy"));
       markings.add((String) rel.get("tlp"));
+      out.put((String) stix.get("id"), stix);
+    }
+    Map<UUID, Map<String, Object>> byId = new HashMap<>();
+    for (var object : selection.objects()) byId.put((UUID) object.get("id"), object);
+    for (var note : selection.notes()) {
+      String ref = primary.get((UUID) note.get("objectId"));
+      if (ref == null) continue;
+      boolean opinion = "opinion".equals(note.get("kind"));
+      Map<String, Object> stix = new LinkedHashMap<>();
+      stix.put("type", opinion ? "opinion" : "note");
+      stix.put("spec_version", "2.1");
+      stix.put("id", (opinion ? "opinion--" : "note--") + note.get("id"));
+      stix.put("created", stamp((String) note.get("createdAt")));
+      stix.put("modified", stamp((String) note.get("updatedAt")));
+      if (opinion) {
+        stix.put("opinion", note.get("opinion"));
+        if (!((String) note.get("body")).isBlank()) stix.put("explanation", note.get("body"));
+      } else stix.put("content", note.get("body"));
+      stix.put("object_refs", List.of(ref));
+      stix.put("object_marking_refs", List.of(marking((String) note.get("tlp"))));
+      markings.add((String) note.get("tlp"));
+      out.put((String) stix.get("id"), stix);
+    }
+    for (var sighting : selection.sightings()) {
+      Map<String, Object> object = byId.get((UUID) sighting.get("objectId"));
+      String ref = primary.get((UUID) sighting.get("objectId"));
+      // STIX sightings reference domain objects; identities export as observables and are skipped.
+      if (object == null || ref == null || "identity".equals(object.get("kind"))) continue;
+      Map<String, Object> stix = new LinkedHashMap<>();
+      stix.put("type", "sighting");
+      stix.put("spec_version", "2.1");
+      stix.put("id", "sighting--" + sighting.get("id"));
+      stix.put("created", stamp((String) sighting.get("createdAt")));
+      stix.put("modified", stamp((String) sighting.get("createdAt")));
+      stix.put("sighting_of_ref", ref);
+      stix.put("first_seen", stamp((String) sighting.get("firstSeen")));
+      stix.put("last_seen", stamp((String) sighting.get("lastSeen")));
+      stix.put("count", sighting.get("count"));
+      if (sighting.get("confidence") != null) stix.put("confidence", sighting.get("confidence"));
+      if (!((String) sighting.get("where")).isBlank()) stix.put("x_modulo_where", sighting.get("where"));
+      if (!((String) sighting.get("description")).isBlank()) stix.put("description", sighting.get("description"));
+      List<String> observed = CtiService.strings((JsonNode) sighting.get("observed"));
+      if (!observed.isEmpty()) stix.put("x_modulo_observed", observed);
+      stix.put("x_modulo_source", sighting.get("source"));
+      stix.put("object_marking_refs", object.get("object_marking_refs") != null ? object.get("object_marking_refs") : List.of(marking((String) object.get("tlp"))));
       out.put((String) stix.get("id"), stix);
     }
     if (report != null) {
@@ -213,6 +267,7 @@ public class CtiExportService {
         if (a.has("validUntil")) s.put("valid_until", date(a.get("validUntil").asText()));
         put(a, "source", s, "x_modulo_source");
         s.put("x_modulo_indicator_type", type);
+        if (object.get("score") != null) s.put("x_modulo_score", object.get("score"));
         s.put("x_modulo_value", value);
         out.add(s);
         break;
@@ -349,7 +404,10 @@ public class CtiExportService {
       s.put("id", id);
       s.put("created", "2017-05-31T21:30:00.000Z");
       s.put("modified", "2017-05-31T21:30:00.000Z");
-      s.put("name", technique);
+      s.put("name", attack.displayName(technique));
+      attack.technique(technique).ifPresent(t -> s.put("kill_chain_phases", t.tactics().stream()
+          .map(phase -> Map.of("kill_chain_name", "mitre-attack", "phase_name", phase)).toList()));
+      s.put("x_mitre_id", technique);
       s.put("external_references", List.of(Map.of(
           "source_name", "mitre-attack", "external_id", technique,
           "url", "https://attack.mitre.org/techniques/" + technique.replace('.', '/') + "/")));
@@ -528,7 +586,9 @@ public class CtiExportService {
       switch (kind) {
         case "indicator" -> {
           String type = mispType(a.path("indicatorType").asText(), value);
-          attributes.add(attribute(object, type, category(type), value, a.path("toIds").asBoolean(true), ""));
+          // A decayed indicator (score below 20) is shared for context, not for detection.
+          boolean live = object.get("score") == null || ((Number) object.get("score")).intValue() >= 20;
+          attributes.add(attribute(object, type, category(type), value, a.path("toIds").asBoolean(true) && live, ""));
         }
         case "infrastructure" -> {
           String type = mispType(CtiValues.inferType(value), value);
@@ -612,6 +672,22 @@ public class CtiExportService {
 
   /** Maps a STIX 2.1 bundle (ours or OpenCTI-style) onto an idempotent ingest batch. */
   public Map<String, Object> importStix(long owner, JsonNode bundle) {
+    return importStix(owner, bundle, "stix-import", null);
+  }
+
+  /** Import with a source label and a TLP for objects that carry no marking (TAXII feeds). */
+  public Map<String, Object> importStix(long owner, JsonNode bundle, String source, String defaultTlp) {
+    this.defaultTlp.set(defaultTlp);
+    try {
+      return importBundle(owner, bundle, source);
+    } finally {
+      this.defaultTlp.remove();
+    }
+  }
+
+  private final ThreadLocal<String> defaultTlp = new ThreadLocal<>();
+
+  private Map<String, Object> importBundle(long owner, JsonNode bundle, String origin) {
     if (bundle == null || !"bundle".equals(bundle.path("type").asText()) || !bundle.path("objects").isArray())
       throw bad("CTI_INVALID_STIX_BUNDLE");
     JsonNode objects = bundle.get("objects");
@@ -638,7 +714,10 @@ public class CtiExportService {
     Set<String> mapped = new HashSet<>();
     for (JsonNode o : objects) {
       String type = o.path("type").asText();
-      if (Set.of("relationship", "marking-definition", "attack-pattern").contains(type)) continue;
+      if (Set.of("relationship", "marking-definition", "attack-pattern", "sighting", "note", "opinion", "report").contains(type)) {
+        if ("report".equals(type)) skipped.merge(type, 1, Integer::sum);
+        continue;
+      }
       if (represented.contains(o.path("id").asText())) continue;
       CtiService.IngestObject item = toIngest(o, byId, techniques.getOrDefault(o.path("id").asText(), List.of()));
       if (item == null) {
@@ -665,7 +744,44 @@ public class CtiExportService {
           type, o.hasNonNull("confidence") ? Integer.valueOf(o.get("confidence").asInt()) : null, o.path("description").asText(null),
           tlpFrom(o), o.path("start_time").asText(null), o.path("stop_time").asText(null)));
     }
-    Map<String, Object> result = new LinkedHashMap<>(cti.ingest(owner, new CtiService.IngestBatch("stix-import", items, relationships, null)));
+    List<CtiService.IngestSighting> sightings = new ArrayList<>();
+    for (JsonNode o : objects) {
+      if (!"sighting".equals(o.path("type").asText())) continue;
+      String target = o.path("sighting_of_ref").asText();
+      if (!mapped.contains(target)) {
+        skipped.merge("sighting", 1, Integer::sum);
+        continue;
+      }
+      List<String> observed = new ArrayList<>();
+      o.path("x_modulo_observed").forEach(value -> observed.add(value.asText()));
+      sightings.add(new CtiService.IngestSighting(json.getNodeFactory().textNode(target), o.path("first_seen").asText(null),
+          o.path("last_seen").asText(null), o.hasNonNull("count") ? Integer.valueOf(Math.max(1, o.get("count").asInt())) : null,
+          o.path("x_modulo_where").asText(null), o.hasNonNull("confidence") ? Integer.valueOf(o.get("confidence").asInt()) : null,
+          o.path("description").asText(null), observed.isEmpty() ? null : observed));
+    }
+    Map<String, Object> result = new LinkedHashMap<>(cti.ingest(owner,
+        new CtiService.IngestBatch(origin, items, relationships, null, sightings), CtiService.MAX_BATCH_OBJECTS * 10));
+    Map<String, UUID> ids = new HashMap<>();
+    for (Object entry : (List<?>) result.get("results")) {
+      Map<?, ?> outcome = (Map<?, ?>) entry;
+      if (outcome.get("ref") != null) ids.put((String) outcome.get("ref"), (UUID) outcome.get("id"));
+    }
+    int notes = 0;
+    for (JsonNode o : objects) {
+      String type = o.path("type").asText();
+      if (!"note".equals(type) && !"opinion".equals(type)) continue;
+      UUID target = null;
+      for (JsonNode ref : o.path("object_refs")) if (target == null) target = ids.get(ref.asText());
+      if (target == null) {
+        skipped.merge(type, 1, Integer::sum);
+        continue;
+      }
+      boolean opinion = "opinion".equals(type);
+      String body = opinion ? o.path("explanation").asText("") : o.path("content").asText("");
+      if (cti.addNoteIfAbsent(owner, target, new CtiService.NoteInput(type, body, opinion ? o.path("opinion").asText(null) : null, tlpFrom(o), null)))
+        notes++;
+    }
+    result.put("notesCreated", notes);
     result.put("skipped", skipped);
     return result;
   }
@@ -686,11 +802,6 @@ public class CtiExportService {
         copyList(o, "goals", a, "goals");
         copy(o, "x_modulo_attribution", a, "attribution", null);
         copyList(o, "x_modulo_audit_threat_refs", a, "auditThreatRefs");
-        ArrayNode list = a.putArray("ttps");
-        Set<String> seen = new HashSet<>();
-        for (String technique : ttps)
-          if (CtiValues.ATTACK.matcher(technique.toUpperCase(Locale.ROOT)).matches() && seen.add(technique)) list.add(technique);
-        if (list.isEmpty()) a.remove("ttps");
       }
       case "campaign", "intrusion-set" -> {
         kind = "campaign";
@@ -809,6 +920,14 @@ public class CtiExportService {
       }
     }
     if (a.has("value") && a.get("value").asText().isBlank()) return null;
+    if (Set.of("actor", "campaign", "malware").contains(kind)) {
+      ArrayNode list = a.putArray("ttps");
+      Set<String> seen = new HashSet<>();
+      for (String technique : ttps)
+        if (CtiValues.ATTACK.matcher(technique.toUpperCase(Locale.ROOT)).matches() && seen.add(technique.toUpperCase(Locale.ROOT)))
+          list.add(technique.toUpperCase(Locale.ROOT));
+      if (list.isEmpty()) a.remove("ttps");
+    }
     if (status != null && !taxonomy.kind(kind).statuses().contains(status)) status = null;
     Integer confidence = o.hasNonNull("confidence") ? Integer.valueOf(o.get("confidence").asInt())
         : o.hasNonNull("x_modulo_confidence") ? Integer.valueOf(o.get("x_modulo_confidence").asInt()) : null;
@@ -828,7 +947,12 @@ public class CtiExportService {
     return out;
   }
 
-  private static String tlpFrom(JsonNode o) {
+  private String tlpFrom(JsonNode o) {
+    String tlp = markingTlp(o);
+    return tlp != null ? tlp : defaultTlp.get();
+  }
+
+  private static String markingTlp(JsonNode o) {
     for (JsonNode ref : o.path("object_marking_refs")) {
       for (var entry : TLP_MARKINGS.entrySet()) if (entry.getValue().equals(ref.asText())) return entry.getKey();
       if (AMBER_STRICT_MARKING.equals(ref.asText())) return "amber+strict";

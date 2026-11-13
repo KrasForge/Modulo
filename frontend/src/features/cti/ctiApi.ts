@@ -66,6 +66,11 @@ export interface CtiObject {
   createdAt: string;
   updatedAt: string;
   degree?: number;
+  /** Indicators only: 0-100 decaying score (see the half-life). */
+  score?: number | null;
+  halfLifeDays?: number;
+  lastSighted?: string | null;
+  sightingCount?: number;
 }
 
 export interface ObjectHead { id: string; kind: CtiKind; name: string; status: string; tlp: Tlp }
@@ -82,8 +87,70 @@ export interface CtiRelationship {
   firstSeen: string | null;
   lastSeen: string | null;
   source: string;
+  /** The inference rule that derived this edge; null for analyst and ingest edges. */
+  inferredBy?: string | null;
   other: ObjectHead;
 }
+
+export type Opinion = 'strongly-disagree' | 'disagree' | 'neutral' | 'agree' | 'strongly-agree';
+export const OPINIONS: Opinion[] = ['strongly-disagree', 'disagree', 'neutral', 'agree', 'strongly-agree'];
+
+export interface CtiNote {
+  id: string;
+  objectId: string;
+  kind: 'note' | 'opinion';
+  opinion: Opinion | null;
+  body: string;
+  tlp: Tlp;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CtiSighting {
+  id: string;
+  objectId: string;
+  firstSeen: string;
+  lastSeen: string;
+  count: number;
+  where: string;
+  source: string;
+  confidence: number | null;
+  description: string;
+  observed: string[];
+  createdAt: string;
+}
+
+export const SIGHTABLE: CtiKind[] = ['indicator', 'infrastructure', 'malware', 'identity', 'campaign', 'actor'];
+
+export const INFERENCE_RULES: Record<string, string> = {
+  'alias-attribution': 'An alias of this identity is attributed to the actor.',
+  'rotation-inheritance': 'A rotation of this infrastructure carries the attribution or use.',
+  'indicator-propagation': 'The observable this indicator is based on is attributed to or used by the actor.',
+};
+
+export interface EnrichmentOption { provider: string; query: string; lastRunAt: string | null }
+export interface EnrichmentResult { reused: boolean; status?: 'done' | 'failed'; enrichmentId: string | null; summary: string; resultUrl?: string | null; findings: number; created?: number }
+
+export interface CsvReport {
+  rows: number;
+  valid: number;
+  errors: Array<{ row: number; column: string | null; code: string }>;
+  errorCount: number;
+  imported: boolean;
+  result?: { created: number; updated: number; unchanged: number; relationshipsCreated: number };
+}
+
+export interface TaxiiToken { id: string; label: string; createdAt: string; lastUsedAt: string | null; revokedAt: string | null }
+export interface TaxiiCollection {
+  id: string; title: string; description: string; tlpCeiling: Tlp; includeVictims: boolean; canRead: boolean; canWrite: boolean;
+  createdAt: string; tokens: TaxiiToken[];
+}
+export interface TaxiiFeed {
+  id: string; title: string; apiRoot: string; collectionId: string; username: string | null; hasPassword: boolean;
+  defaultTlp: Tlp; pollMinutes: number | null; enabled: boolean; addedAfter: string | null; lastPolledAt: string | null; lastResult: string;
+}
+export interface IssuedToken { id: string; label: string; username: string; password: string; bearer: string }
 
 export interface CtiChange {
   seq: number;
@@ -98,6 +165,8 @@ export interface CtiChange {
 
 export interface CtiDetail extends CtiObject {
   relationships: CtiRelationship[];
+  notes: CtiNote[];
+  sightings: CtiSighting[];
   history: CtiChange[];
 }
 
@@ -105,7 +174,7 @@ export interface Page<T> { items: T[]; total: number; page: number; limit: numbe
 
 export type SavedView =
   | 'live-c2' | 'open-leads' | 'stale-leads' | 'unattributed-identities'
-  | 'expiring-indicators' | 'unhealthy-watches' | 'unnotified-victims';
+  | 'expiring-indicators' | 'decayed-indicators' | 'unhealthy-watches' | 'unnotified-victims';
 
 export const SAVED_VIEWS: Record<SavedView, { label: string; kind: CtiKind; description: string }> = {
   'live-c2': { label: 'Live C2', kind: 'infrastructure', description: 'Live C2, blob hosts and dead drops.' },
@@ -113,6 +182,7 @@ export const SAVED_VIEWS: Record<SavedView, { label: string; kind: CtiKind; desc
   'stale-leads': { label: 'Stale leads', kind: 'lead', description: 'Open leads untouched for 14 days.' },
   'unattributed-identities': { label: 'Unattributed identities', kind: 'identity', description: 'Identities with no attribution through any alias chain.' },
   'expiring-indicators': { label: 'Expiring indicators', kind: 'indicator', description: 'Active indicators valid for at most 14 more days.' },
+  'decayed-indicators': { label: 'Decayed indicators', kind: 'indicator', description: 'Active indicators whose score has decayed below 20 for lack of sightings.' },
   'unhealthy-watches': { label: 'Unhealthy watches', kind: 'watch', description: 'Watches that are failing or have not reported for 2 days.' },
   'unnotified-victims': { label: 'Unnotified victims', kind: 'victim', description: 'Victims not yet notified.' },
 };
@@ -123,10 +193,12 @@ export interface Summary {
   views: Record<SavedView, Page<CtiObject>>;
   recentChanges: { items: CtiChange[]; totals: Record<string, number> };
   graphProjection: 'neo4j' | 'postgres-only';
+  inferredRelationships: number;
+  sightingsLast30Days: number;
 }
 
 export interface GraphNode { id: string; kind: CtiKind; name: string; status: string; tlp: Tlp; confidence: number | null; depth: number }
-export interface GraphEdge { id: string; sourceId: string; targetId: string; type: string; confidence: number | null }
+export interface GraphEdge { id: string; sourceId: string; targetId: string; type: string; confidence: number | null; inferredBy?: string | null }
 export interface Graph { nodes: GraphNode[]; edges: GraphEdge[]; focus: string; projection: string }
 
 export interface ObjectInput {
@@ -165,6 +237,17 @@ const MESSAGES: Record<string, string> = {
   CTI_DISCLOSURE_EMPTY: 'Link the disclosure to the records it concerns first.',
   CTI_INVALID_STIX_BUNDLE: 'The file is not a STIX 2.1 bundle.',
   CTI_SELF_RELATIONSHIP: 'A record cannot be related to itself.',
+  CTI_INFERRED_RELATIONSHIP: 'This relationship was inferred; remove the relationship it was derived from instead.',
+  CTI_NOT_SIGHTABLE: 'Sightings can be recorded on actors, campaigns, identities, infrastructure, malware and indicators.',
+  CTI_INVALID_OPINION: 'Choose an opinion from strongly disagree to strongly agree.',
+  CTI_NOTE_BODY_REQUIRED: 'Write the note first.',
+  CTI_PROVIDER_NOT_APPLICABLE: 'That provider does not apply to this record.',
+  CTI_PROVIDER_RATE_LIMITED: 'The provider is rate-limiting requests. Try again later.',
+  CTI_PROVIDER_UNAUTHORIZED: 'The provider rejected the request. Check its API key.',
+  CTI_TAXII_UNAUTHORIZED: 'The TAXII server rejected the credentials.',
+  CTI_TAXII_API_ROOT_INVALID: 'The API root must be an http(s) URL without credentials, query or fragment.',
+  REMOTE_CREDENTIALS_UNCONFIGURED: 'The server has no credential key (modulo.remote.credential-key), so passwords cannot be stored.',
+  URL_ADDRESS_NOT_ALLOWED: 'That address is on a private network, which the server does not contact.',
 };
 
 export function describeError(code: string, status: number): string {
@@ -214,6 +297,8 @@ function asSummary(value: unknown): Summary {
     views: Object.fromEntries(Object.keys(SAVED_VIEWS).map(id => [id, asPage<CtiObject>(views[id])])) as Summary['views'],
     recentChanges: asChanges(raw.recentChanges),
     graphProjection: raw.graphProjection === 'neo4j' ? 'neo4j' : 'postgres-only',
+    inferredRelationships: Number(raw.inferredRelationships) || 0,
+    sightingsLast30Days: Number(raw.sightingsLast30Days) || 0,
   };
 }
 function asGraph(value: unknown): Graph {
@@ -224,7 +309,9 @@ function asDetail(value: unknown): CtiDetail {
   const raw = record(value);
   if (typeof raw.id !== 'string' || typeof raw.kind !== 'string') throw new CtiError('CTI_INVALID_RESPONSE', 200);
   return { ...(raw as unknown as CtiObject), attributes: record(raw.attributes) as CtiObject['attributes'], labels: array<string>(raw.labels),
-    relationships: array<CtiRelationship>(raw.relationships), history: array<CtiChange>(raw.history) };
+    relationships: array<CtiRelationship>(raw.relationships), notes: array<CtiNote>(raw.notes),
+    sightings: array<CtiSighting>(raw.sightings).map(sighting => ({ ...sighting, observed: array<string>(sighting.observed) })),
+    history: array<CtiChange>(raw.history) };
 }
 
 export interface ListParams { kind?: CtiKind; view?: SavedView; q?: string; status?: string; tlp?: Tlp; label?: string; page?: number; limit?: number }
@@ -249,6 +336,37 @@ export const ctiApi = {
     request<{ created: number; updated: number; unchanged: number; relationshipsCreated: number; skipped: Record<string, number> }>('/import/stix', { body: bundle }),
   ingest: (batch: { source?: string; objects?: Array<Omit<ObjectInput, 'revision'> & { ref?: string }>; relationships?: Array<{ source: unknown; target: unknown; type: string }> }) =>
     request<{ created: number; updated: number; unchanged: number; relationshipsCreated: number; results: Array<{ id: string; kind: CtiKind; action: 'created' | 'updated' | 'unchanged'; ref?: string }> }>('/ingest', { body: batch }),
+  addNote: (objectId: string, input: { kind: 'note' | 'opinion'; body: string; opinion?: Opinion | null; tlp?: Tlp }) =>
+    request<CtiNote>(`/objects/${encodeURIComponent(objectId)}/notes`, { body: input }),
+  updateNote: (id: string, input: { body: string; opinion?: Opinion | null; tlp?: Tlp; revision: number }) =>
+    request<CtiNote>(`/notes/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
+  deleteNote: (id: string) => request<{ deleted: boolean }>(`/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  addSighting: (objectId: string, input: { firstSeen?: string; lastSeen?: string; count?: number; where?: string; confidence?: number | null; description?: string; observed?: string[] }) =>
+    request<{ id: string; recorded: boolean }>(`/objects/${encodeURIComponent(objectId)}/sightings`, { body: input }),
+  deleteSighting: (id: string) => request<{ deleted: boolean }>(`/sightings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  reinfer: () => request<{ added: number; retracted: number }>('/inference/run', { body: {} }),
+  attackUsage: async () => {
+    const raw = record(record(await request<unknown>('/attack')).usage);
+    return Object.fromEntries(Object.entries(raw).map(([technique, users]) => [technique, array<ObjectHead>(users)])) as Record<string, ObjectHead[]>;
+  },
+  enrichmentOptions: async (id: string) => {
+    const raw = record(await request<unknown>(`/objects/${encodeURIComponent(id)}/enrichment`));
+    return { observable: record(raw.observable) as { type?: string; value?: string }, providers: array<EnrichmentOption>(raw.providers) };
+  },
+  enrich: (id: string, provider: string, force = false) => request<EnrichmentResult>(`/objects/${encodeURIComponent(id)}/enrich`, { body: { provider, force } }),
+  importCsv: (kind: CtiKind, csv: string, options: { dryRun: boolean; skipInvalid: boolean }) =>
+    request<CsvReport>(`/import/csv${query({ kind, dryRun: options.dryRun, skipInvalid: options.skipInvalid })}`, { body: { csv } }),
+  taxiiCollections: async () => array<TaxiiCollection>(await request<unknown>('/taxii/collections')),
+  createTaxiiCollection: (input: { title: string; description?: string; tlpCeiling: Tlp; includeVictims: boolean; canRead: boolean; canWrite: boolean }) =>
+    request<TaxiiCollection>('/taxii/collections', { body: input }),
+  deleteTaxiiCollection: (id: string) => request<{ deleted: boolean }>(`/taxii/collections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createTaxiiToken: (collection: string, label: string) => request<IssuedToken>(`/taxii/collections/${encodeURIComponent(collection)}/tokens`, { body: { label } }),
+  revokeTaxiiToken: (id: string) => request<{ revoked: boolean }>(`/taxii/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  taxiiFeeds: async () => array<TaxiiFeed>(await request<unknown>('/taxii/feeds')),
+  createTaxiiFeed: (input: { title: string; apiRoot: string; collectionId: string; username?: string; password?: string; defaultTlp: Tlp; pollMinutes?: number | null; enabled: boolean }) =>
+    request<TaxiiFeed>('/taxii/feeds', { body: input }),
+  deleteTaxiiFeed: (id: string) => request<{ deleted: boolean }>(`/taxii/feeds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  pullTaxiiFeed: (id: string) => request<{ objects: number; pages: number; result: string }>(`/taxii/feeds/${encodeURIComponent(id)}/pull`, { body: {} }),
   capsule: (id: string) => request<{ bundle: Record<string, unknown>; sha256: string; objects: number }>(`/disclosures/${encodeURIComponent(id)}/capsule`, { body: {} }),
 };
 
@@ -312,6 +430,28 @@ export function cleanAttributes(kind: CtiKind, draft: Record<string, unknown>): 
     else out[key] = spec.observable ? refang(String(value)) : String(value).trim();
   }
   return out;
+}
+
+/** Field changes recorded by the journal, as `field: from → to` lines. */
+export function describeChanges(detail: Record<string, unknown>): string[] {
+  const changes = record(detail.changes);
+  const show = (value: unknown): string => {
+    if (value === null || value === undefined || value === '') return '∅';
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '∅';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+  return Object.entries(changes).map(([field, pair]) => {
+    const { from, to } = record(pair);
+    return `${field.replace(/^attributes\./, '')}: ${show(from)} → ${show(to)}`;
+  });
+}
+
+export function scoreTone(score: number | null | undefined): string {
+  if (score === null || score === undefined) return 'border-border-strong text-muted-foreground';
+  if (score >= 60) return 'border-transparent bg-destructive/15 text-destructive';
+  if (score >= 20) return 'border-transparent bg-warning/15 text-warning';
+  return 'border-border-strong text-muted-foreground';
 }
 
 export function relativeAge(iso: string | null | undefined, now = Date.now()): string {

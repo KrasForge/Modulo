@@ -34,30 +34,60 @@ public class CtiService {
         + "confidence, " + a + "description, " + a + "attributes::text AS attributes, " + a + "labels::text AS labels, "
         + a + "first_seen, " + a + "last_seen, " + a + "source, " + a + "revision, " + a + "created_at, " + a + "updated_at";
   }
+  /** Indicator half-life in days by indicator type; scores halve every half-life without activity. */
+  static final String HALF_LIFE =
+      "(CASE o.attributes->>'indicatorType' WHEN 'ipv4' THEN 30 WHEN 'ipv6' THEN 30 WHEN 'url' THEN 45"
+          + " WHEN 'domain' THEN 90 WHEN 'filename' THEN 90 WHEN 'email' THEN 120 WHEN 'wallet' THEN 180"
+          + " WHEN 'sha256' THEN 365 WHEN 'sha1' THEN 365 WHEN 'md5' THEN 365 WHEN 'yara' THEN 365"
+          + " WHEN 'sigma' THEN 365 WHEN 'stix-pattern' THEN 365 ELSE 90 END)";
+  /**
+   * Indicator score (0-100): confidence (50 when unset) plus 5 per sighting in the last 30 days
+   * (at most +20), halved every half-life since the last activity (latest sighting, last seen or
+   * valid-from). Revoked, expired or past-valid-until indicators score 0. NULL for other kinds.
+   */
+  static final String SCORE =
+      "(CASE WHEN o.kind <> 'indicator' THEN NULL"
+          + " WHEN o.status <> 'active' OR (o.attributes->>'validUntil' IS NOT NULL AND (o.attributes->>'validUntil')::date < current_date) THEN 0"
+          + " ELSE round(least(100, coalesce(o.confidence, 50) + least(20, 5 * sg.recent)) * power(0.5,"
+          + " greatest(0, extract(epoch FROM now() - greatest(sg.last_sighted, o.last_seen,"
+          + " coalesce((o.attributes->>'validFrom')::timestamptz, o.created_at)))) / 86400.0 / " + HALF_LIFE + "))::int END)";
+  /** Objects joined with their sighting aggregates; every list/detail query reads from this. */
+  static final String SCORED_FROM =
+      " cti_objects o LEFT JOIN LATERAL (SELECT max(s.last_seen) AS last_sighted, count(*) AS sightings,"
+          + " coalesce(sum(s.count) FILTER (WHERE s.last_seen > now() - interval '30 days'), 0) AS recent"
+          + " FROM cti_sightings s WHERE s.owner_id = o.owner_id AND s.object_id = o.id) sg ON TRUE";
+  static final String SCORED_COLUMNS =
+      columns("o") + ", " + SCORE + " AS score, sg.last_sighted, sg.sightings, CASE WHEN o.kind = 'indicator' THEN "
+          + HALF_LIFE + " END AS half_life";
+  static final Set<String> SIGHTABLE = Set.of("indicator", "infrastructure", "malware", "identity", "campaign", "actor");
+  static final List<String> OPINIONS = List.of("strongly-disagree", "disagree", "neutral", "agree", "strongly-agree");
+
   static final Map<String, String> VIEWS =
-      Map.of(
-          "live-c2",
-          "o.kind = 'infrastructure' AND o.status = 'live' AND o.attributes->>'infraKind' IN ('c2','blob-host','dead-drop')",
-          "unattributed-identities",
+      Map.ofEntries(Map.entry("decayed-indicators",
+          "o.kind = 'indicator' AND o.status = 'active' AND " + SCORE + " < 20"),
+          Map.entry(
+"live-c2",
+          "o.kind = 'infrastructure' AND o.status = 'live' AND o.attributes->>'infraKind' IN ('c2','blob-host','dead-drop')"),
+          Map.entry("unattributed-identities",
           "o.kind = 'identity' AND NOT EXISTS (WITH RECURSIVE alias_walk(id, depth) AS ("
               + " SELECT o.id, 0 UNION SELECT CASE WHEN ar.source_id = aw.id THEN ar.target_id ELSE ar.source_id END,"
               + " aw.depth + 1 FROM alias_walk aw JOIN cti_relationships ar ON ar.owner_id = o.owner_id"
               + " AND ar.type = 'alias-of' AND (ar.source_id = aw.id OR ar.target_id = aw.id) WHERE aw.depth < 6)"
               + " SELECT 1 FROM alias_walk aw JOIN cti_relationships ax ON ax.owner_id = o.owner_id"
               + " AND ((ax.source_id = aw.id AND ax.type IN ('attributed-to','part-of'))"
-              + " OR (ax.target_id = aw.id AND ax.type IN ('controls','uses'))))",
-          "open-leads",
-          "o.kind = 'lead' AND o.status <> 'closed'",
-          "stale-leads",
-          "o.kind = 'lead' AND o.status <> 'closed' AND o.updated_at < now() - interval '14 days'",
-          "expiring-indicators",
+              + " OR (ax.target_id = aw.id AND ax.type IN ('controls','uses'))))"),
+          Map.entry("open-leads",
+          "o.kind = 'lead' AND o.status <> 'closed'"),
+          Map.entry("stale-leads",
+          "o.kind = 'lead' AND o.status <> 'closed' AND o.updated_at < now() - interval '14 days'"),
+          Map.entry("expiring-indicators",
           "o.kind = 'indicator' AND o.status = 'active' AND o.attributes->>'validUntil' IS NOT NULL"
-              + " AND (o.attributes->>'validUntil')::date <= current_date + 14",
-          "unhealthy-watches",
+              + " AND (o.attributes->>'validUntil')::date <= current_date + 14"),
+          Map.entry("unhealthy-watches",
           "o.kind = 'watch' AND (o.status = 'failing' OR (o.status = 'active' AND (o.attributes->>'lastRunAt' IS NULL"
-              + " OR (o.attributes->>'lastRunAt')::timestamptz < now() - interval '2 days')))",
-          "unnotified-victims",
-          "o.kind = 'victim' AND coalesce(o.attributes->>'notified', 'false') <> 'true'");
+              + " OR (o.attributes->>'lastRunAt')::timestamptz < now() - interval '2 days')))"),
+          Map.entry("unnotified-victims",
+          "o.kind = 'victim' AND coalesce(o.attributes->>'notified', 'false') <> 'true'"));
 
   private final JdbcTemplate jdbc;
   private final ObjectMapper json;
@@ -126,13 +156,36 @@ public class CtiService {
 
   public record WatchRun(String watchType, String target, String result, String status) {}
 
+  public record IngestSighting(
+      JsonNode target,
+      String firstSeen,
+      String lastSeen,
+      Integer count,
+      String where,
+      Integer confidence,
+      String description,
+      List<String> observed) {}
+
   public record IngestBatch(
-      String source, List<IngestObject> objects, List<IngestRelationship> relationships, WatchRun watch) {}
+      String source,
+      List<IngestObject> objects,
+      List<IngestRelationship> relationships,
+      WatchRun watch,
+      List<IngestSighting> sightings) {
+    public IngestBatch(String source, List<IngestObject> objects, List<IngestRelationship> relationships, WatchRun watch) {
+      this(source, objects, relationships, watch, null);
+    }
+  }
+
+  public record NoteInput(String kind, String body, String opinion, String tlp, Long revision) {}
+
+  public record SightingInput(
+      String firstSeen, String lastSeen, Integer count, String where, Integer confidence, String description, List<String> observed) {}
 
   public record Merge(UUID into) {}
 
   /** A validated object write, with flags for the fields the caller actually supplied. */
-  record Candidate(
+  public record Candidate(
       CtiTaxonomy.Kind kind,
       String name,
       boolean nameGiven,
@@ -184,9 +237,9 @@ public class CtiService {
           Map<String, Object> other = findByKey(owner, kind, c.naturalKey(), false);
           if (other != null && !id.equals(other.get("id")))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "CTI_DUPLICATE_OBJECT");
-          List<String> changed = diff(existing, c);
+          Map<String, Object> changed = diff(existing, c);
           write(owner, id, c);
-          change(owner, id, kind, c.name(), "updated", Map.of("fields", changed), source(source));
+          change(owner, id, kind, c.name(), "updated", changed, source(source));
           after.add(project(owner, id, c));
         });
     after.forEach(Runnable::run);
@@ -194,6 +247,7 @@ public class CtiService {
   }
 
   public void delete(long owner, UUID id, long revision) {
+    List<Runnable> after = new ArrayList<>();
     tx.executeWithoutResult(
         status -> {
           Map<String, Object> existing = lock(owner, id);
@@ -201,8 +255,10 @@ public class CtiService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "CTI_STALE_REVISION");
           jdbc.update("DELETE FROM cti_objects WHERE owner_id = ? AND id = ?", owner, id);
           change(owner, id, (String) existing.get("kind"), (String) existing.get("name"), "deleted", Map.of(), "manual");
+          infer(owner, "inference", after);
         });
     graph.deleteObject(owner, id);
+    after.forEach(Runnable::run);
   }
 
   /**
@@ -244,7 +300,7 @@ public class CtiService {
                   + " SELECT owner_id, gen_random_uuid(), CASE WHEN source_id = ? THEN ? ELSE source_id END,"
                   + " CASE WHEN target_id = ? THEN ? ELSE target_id END, type, confidence, description, tlp, first_seen,"
                   + " last_seen, source, created_at, now() FROM cti_relationships"
-                  + " WHERE owner_id = ? AND (source_id = ? OR target_id = ?)"
+                  + " WHERE owner_id = ? AND inferred_by IS NULL AND (source_id = ? OR target_id = ?)"
                   + " AND NOT ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))"
                   + " ON CONFLICT (owner_id, source_id, target_id, type) DO NOTHING",
               sourceId, targetId, sourceId, targetId, owner, sourceId, sourceId, sourceId, targetId, targetId, sourceId);
@@ -253,6 +309,7 @@ public class CtiService {
               Map.of("mergedId", sourceId.toString(), "mergedName", from.get("name")), "manual");
           change(owner, sourceId, kind.id(), (String) from.get("name"), "deleted",
               Map.of("mergedInto", targetId.toString()), "manual");
+          infer(owner, "inference", new ArrayList<>());
         });
     reproject(owner);
     return object(owner, targetId);
@@ -263,14 +320,22 @@ public class CtiService {
   public Map<String, Object> link(long owner, RelationshipInput input, String source) {
     List<Runnable> after = new ArrayList<>();
     Map<String, Object> result =
-        tx.execute(status -> upsertRelationship(owner, input, source(source), after));
+        tx.execute(status -> {
+          var linked = upsertRelationship(owner, input, source(source), after);
+          infer(owner, "inference", after);
+          return linked;
+        });
     after.forEach(Runnable::run);
     return result;
   }
 
   public void unlink(long owner, UUID id) {
+    List<Runnable> after = new ArrayList<>();
     tx.executeWithoutResult(
         status -> {
+          var inferred = jdbc.queryForList("SELECT inferred_by FROM cti_relationships WHERE owner_id = ? AND id = ?", String.class, owner, id);
+          if (!inferred.isEmpty() && inferred.get(0) != null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "CTI_INFERRED_RELATIONSHIP");
           var rows = jdbc.queryForList(
               "DELETE FROM cti_relationships r USING cti_objects o WHERE r.owner_id = ? AND r.id = ?"
                   + " AND o.owner_id = r.owner_id AND o.id = r.source_id RETURNING r.type, r.target_id, o.id AS oid, o.kind, o.name",
@@ -279,8 +344,10 @@ public class CtiService {
           var row = rows.get(0);
           change(owner, (UUID) row.get("oid"), (String) row.get("kind"), (String) row.get("name"), "unlinked",
               Map.of("type", row.get("type"), "targetId", row.get("target_id").toString()), "manual");
+          infer(owner, "inference", after);
         });
     graph.deleteRelationship(owner, id);
+    after.forEach(Runnable::run);
   }
 
   private Map<String, Object> upsertRelationship(long owner, RelationshipInput input, String source, List<Runnable> after) {
@@ -296,6 +363,10 @@ public class CtiService {
     String description = description(input.description());
     Instant first = CtiValues.instant(input.firstSeen());
     Instant last = CtiValues.instant(input.lastSeen());
+    // An analyst or ingest asserting an inferred edge promotes it to an explicit one.
+    boolean wasInferred = !jdbc.queryForList(
+        "SELECT 1 FROM cti_relationships WHERE owner_id = ? AND source_id = ? AND target_id = ? AND type = ? AND inferred_by IS NOT NULL",
+        owner, input.sourceId(), input.targetId(), input.type()).isEmpty();
     var row = jdbc.queryForMap(
         "INSERT INTO cti_relationships (owner_id, id, source_id, target_id, type, confidence, description, tlp,"
             + " first_seen, last_seen, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -303,12 +374,12 @@ public class CtiService {
             + " confidence = coalesce(EXCLUDED.confidence, cti_relationships.confidence),"
             + " description = CASE WHEN EXCLUDED.description <> '' THEN EXCLUDED.description ELSE cti_relationships.description END,"
             + " first_seen = least(cti_relationships.first_seen, EXCLUDED.first_seen),"
-            + " last_seen = greatest(cti_relationships.last_seen, EXCLUDED.last_seen), updated_at = now()"
+            + " last_seen = greatest(cti_relationships.last_seen, EXCLUDED.last_seen), inferred_by = NULL, updated_at = now()"
             + " RETURNING id, (xmax = 0) AS inserted",
         owner, UUID.randomUUID(), input.sourceId(), input.targetId(), input.type(), confidence, description, tlp,
         ts(first), ts(last), source);
     UUID id = (UUID) row.get("id");
-    boolean inserted = Boolean.TRUE.equals(row.get("inserted"));
+    boolean inserted = Boolean.TRUE.equals(row.get("inserted")) || wasInferred;
     if (inserted) {
       change(owner, input.sourceId(), (String) from.get("kind"), (String) from.get("name"), "linked",
           Map.of("type", input.type(), "targetId", input.targetId().toString(), "targetName", to.get("name")), source);
@@ -325,11 +396,18 @@ public class CtiService {
    * endpoints are batch refs, object ids, or {@code {"kind","key"}} natural-key lookups.
    */
   public Map<String, Object> ingest(long owner, IngestBatch batch) {
+    return ingest(owner, batch, MAX_BATCH_OBJECTS);
+  }
+
+  /** Ingest with a caller-chosen object limit (CSV and TAXII imports allow larger batches). */
+  Map<String, Object> ingest(long owner, IngestBatch batch, int maxObjects) {
     List<IngestObject> objects = batch.objects() == null ? List.of() : batch.objects();
     List<IngestRelationship> relationships = batch.relationships() == null ? List.of() : batch.relationships();
-    if (objects.size() > MAX_BATCH_OBJECTS || relationships.size() > MAX_BATCH_RELATIONSHIPS)
+    List<IngestSighting> sightings = batch.sightings() == null ? List.of() : batch.sightings();
+    if (objects.size() > maxObjects || relationships.size() > Math.max(MAX_BATCH_RELATIONSHIPS, maxObjects * 2)
+        || sightings.size() > MAX_BATCH_RELATIONSHIPS)
       throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "CTI_BATCH_TOO_LARGE");
-    if (objects.isEmpty() && relationships.isEmpty() && batch.watch() == null) throw bad("CTI_EMPTY_BATCH");
+    if (objects.isEmpty() && relationships.isEmpty() && sightings.isEmpty() && batch.watch() == null) throw bad("CTI_EMPTY_BATCH");
     String source = source(batch.source() == null ? "ingest" : batch.source());
     List<Runnable> after = new ArrayList<>();
     Map<String, Object> result =
@@ -360,13 +438,22 @@ public class CtiService {
                     rel.description(), rel.tlp(), rel.firstSeen(), rel.lastSeen()), source, after);
                 if (Boolean.TRUE.equals(outcome.get("created"))) linked++;
               }
+              int sighted = 0;
+              for (IngestSighting sighting : sightings) {
+                if (sighting == null) throw bad("CTI_INVALID_SIGHTING");
+                UUID target = resolve(owner, sighting.target(), refs);
+                if (recordSighting(owner, target, new SightingInput(sighting.firstSeen(), sighting.lastSeen(), sighting.count(),
+                    sighting.where(), sighting.confidence(), sighting.description(), sighting.observed()), source) != null) sighted++;
+              }
               Map<String, Object> out = new LinkedHashMap<>();
               out.put("created", counts[0]);
               out.put("updated", counts[1]);
               out.put("unchanged", counts[2]);
               out.put("relationshipsCreated", linked);
+              out.put("sightingsRecorded", sighted);
               out.put("results", results);
               if (batch.watch() != null) out.put("watch", recordWatch(owner, batch.watch(), counts[0], touched, source, after));
+              out.put("inferred", infer(owner, "inference", after));
               return out;
             });
     after.forEach(Runnable::run);
@@ -401,10 +488,10 @@ public class CtiService {
         c.confidence() != null ? c.confidence() : (Integer) existing.get("confidence"),
         c.description().isBlank() ? (String) existing.get("description") : c.description(),
         attributes, List.copyOf(labels), first, last);
-    List<String> changed = diff(existing, merged);
-    if (changed.isEmpty()) return new LinkedHashMap<>(Map.of("id", id, "kind", c.kind().id(), "action", "unchanged"));
+    Map<String, Object> changed = diff(existing, merged);
+    if (((List<?>) changed.get("fields")).isEmpty()) return new LinkedHashMap<>(Map.of("id", id, "kind", c.kind().id(), "action", "unchanged"));
     write(owner, id, merged);
-    change(owner, id, c.kind().id(), merged.name(), "updated", Map.of("fields", changed), source);
+    change(owner, id, c.kind().id(), merged.name(), "updated", changed, source);
     after.add(project(owner, id, merged));
     return new LinkedHashMap<>(Map.of("id", id, "kind", c.kind().id(), "action", "updated"));
   }
@@ -454,7 +541,7 @@ public class CtiService {
   // ------------------------------------------------------------------ reads
 
   public Map<String, Object> object(long owner, UUID id) {
-    var rows = jdbc.queryForList("SELECT " + COLUMNS + " FROM cti_objects WHERE owner_id = ? AND id = ?", owner, id);
+    var rows = jdbc.queryForList("SELECT " + SCORED_COLUMNS + " FROM" + SCORED_FROM + " WHERE o.owner_id = ? AND o.id = ?", owner, id);
     if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "CTI_NOT_FOUND");
     return row(rows.get(0));
   }
@@ -465,7 +552,7 @@ public class CtiService {
     List<Map<String, Object>> relationships = new ArrayList<>();
     for (var row : jdbc.queryForList(
         "SELECT r.id, r.type, r.source_id, r.target_id, r.confidence, r.description, r.tlp, r.first_seen, r.last_seen,"
-            + " r.source, r.created_at, o.id AS other_id, o.kind AS other_kind, o.name AS other_name,"
+            + " r.source, r.created_at, r.inferred_by, o.id AS other_id, o.kind AS other_kind, o.name AS other_name,"
             + " o.status AS other_status, o.tlp AS other_tlp FROM cti_relationships r JOIN cti_objects o"
             + " ON o.owner_id = r.owner_id AND o.id = CASE WHEN r.source_id = ? THEN r.target_id ELSE r.source_id END"
             + " WHERE r.owner_id = ? AND (r.source_id = ? OR r.target_id = ?) ORDER BY r.type, lower(o.name) LIMIT 2000",
@@ -482,11 +569,14 @@ public class CtiService {
       rel.put("firstSeen", iso(row.get("first_seen")));
       rel.put("lastSeen", iso(row.get("last_seen")));
       rel.put("source", row.get("source"));
+      rel.put("inferredBy", row.get("inferred_by"));
       rel.put("other", Map.of("id", row.get("other_id"), "kind", row.get("other_kind"), "name", row.get("other_name"),
           "status", row.get("other_status"), "tlp", row.get("other_tlp")));
       relationships.add(rel);
     }
     out.put("relationships", relationships);
+    out.put("notes", notes(owner, id));
+    out.put("sightings", sightings(owner, id));
     out.put("history", changes(owner, null, id, 50).get("items"));
     return out;
   }
@@ -523,18 +613,19 @@ public class CtiService {
       where.append(" AND o.labels @> CAST(? AS jsonb)");
       args.add(text(List.of(label.toLowerCase(Locale.ROOT))));
     }
-    long total = jdbc.queryForObject("SELECT count(*) FROM cti_objects o" + where, Long.class, args.toArray());
+    long total = jdbc.queryForObject("SELECT count(*) FROM" + SCORED_FROM + where, Long.class, args.toArray());
     String order = view != null && view.endsWith("leads")
         ? " ORDER BY coalesce(o.attributes->>'priority', 'P9'), o.updated_at DESC, o.id"
+        : "decayed-indicators".equals(view) ? " ORDER BY " + SCORE + ", o.updated_at DESC, o.id"
         : " ORDER BY o.updated_at DESC, o.id";
     List<Object> pageArgs = new ArrayList<>(args);
     pageArgs.add(limit);
     pageArgs.add((long) page * limit);
     List<Map<String, Object>> items = new ArrayList<>();
     for (var row : jdbc.queryForList(
-        "SELECT " + columns("o")
+        "SELECT " + SCORED_COLUMNS
             + ", (SELECT count(*) FROM cti_relationships r WHERE r.owner_id = o.owner_id AND (r.source_id = o.id OR r.target_id = o.id)) AS degree"
-            + " FROM cti_objects o" + where + order + " LIMIT ? OFFSET ?",
+            + " FROM" + SCORED_FROM + where + order + " LIMIT ? OFFSET ?",
         pageArgs.toArray())) {
       Map<String, Object> item = row(row);
       item.put("degree", ((Number) row.get("degree")).longValue());
@@ -568,7 +659,7 @@ public class CtiService {
     }
     String ids = "{" + String.join(",", nodes.stream().map(node -> node.get("id").toString()).toList()) + "}";
     List<Map<String, Object>> edges = nodes.isEmpty() ? List.of() : jdbc.queryForList(
-        "SELECT id, source_id AS \"sourceId\", target_id AS \"targetId\", type, confidence FROM cti_relationships"
+        "SELECT id, source_id AS \"sourceId\", target_id AS \"targetId\", type, confidence, inferred_by AS \"inferredBy\" FROM cti_relationships"
             + " WHERE owner_id = ? AND source_id = ANY(CAST(? AS uuid[])) AND target_id = ANY(CAST(? AS uuid[])) LIMIT 5000",
         owner, ids, ids);
     return Map.of("nodes", nodes, "edges", edges, "focus", focus == null ? "" : focus.toString(),
@@ -617,10 +708,15 @@ public class CtiService {
     out.put("counts", counts);
     out.put("relationships", jdbc.queryForObject("SELECT count(*) FROM cti_relationships WHERE owner_id = ?", Long.class, owner));
     Map<String, Object> views = new LinkedHashMap<>();
-    for (String view : List.of("live-c2", "open-leads", "stale-leads", "unattributed-identities", "expiring-indicators", "unhealthy-watches", "unnotified-victims"))
+    for (String view : List.of("live-c2", "open-leads", "stale-leads", "unattributed-identities", "expiring-indicators",
+        "decayed-indicators", "unhealthy-watches", "unnotified-victims"))
       views.put(view, list(owner, null, view, null, null, null, null, 0, 10));
     out.put("views", views);
     out.put("recentChanges", changes(owner, Instant.now().minusSeconds(7 * 86400).toString(), null, 25));
+    out.put("inferredRelationships", jdbc.queryForObject(
+        "SELECT count(*) FROM cti_relationships WHERE owner_id = ? AND inferred_by IS NOT NULL", Long.class, owner));
+    out.put("sightingsLast30Days", jdbc.queryForObject(
+        "SELECT coalesce(sum(count), 0) FROM cti_sightings WHERE owner_id = ? AND last_seen > now() - interval '30 days'", Long.class, owner));
     out.put("graphProjection", graph.isAvailable() ? "neo4j" : "postgres-only");
     return out;
   }
@@ -633,16 +729,16 @@ public class CtiService {
   /** All rows of the owner, for exports and reprojection. */
   List<Map<String, Object>> allObjects(long owner) {
     List<Map<String, Object>> out = new ArrayList<>();
-    for (var row : jdbc.queryForList("SELECT " + COLUMNS + " FROM cti_objects WHERE owner_id = ? ORDER BY created_at, id LIMIT ?",
-        owner, MAX_OBJECTS_PER_OWNER)) out.add(row(row));
+    for (var row : jdbc.queryForList("SELECT " + SCORED_COLUMNS + " FROM" + SCORED_FROM
+        + " WHERE o.owner_id = ? ORDER BY o.created_at, o.id LIMIT ?", owner, MAX_OBJECTS_PER_OWNER)) out.add(row(row));
     return out;
   }
 
   List<Map<String, Object>> allRelationships(long owner) {
     List<Map<String, Object>> out = new ArrayList<>();
     for (var row : jdbc.queryForList(
-        "SELECT id, source_id, target_id, type, confidence, description, tlp, first_seen, last_seen, created_at, updated_at"
-            + " FROM cti_relationships WHERE owner_id = ? ORDER BY created_at, id", owner)) {
+        "SELECT id, source_id, target_id, type, confidence, description, tlp, first_seen, last_seen, created_at, updated_at,"
+            + " inferred_by FROM cti_relationships WHERE owner_id = ? ORDER BY created_at, id", owner)) {
       Map<String, Object> rel = new LinkedHashMap<>();
       rel.put("id", row.get("id"));
       rel.put("sourceId", row.get("source_id"));
@@ -655,6 +751,7 @@ public class CtiService {
       rel.put("lastSeen", iso(row.get("last_seen")));
       rel.put("createdAt", iso(row.get("created_at")));
       rel.put("updatedAt", iso(row.get("updated_at")));
+      rel.put("inferredBy", row.get("inferred_by"));
       out.add(rel);
     }
     return out;
@@ -675,6 +772,376 @@ public class CtiService {
           + " WHERE owner_id = ? AND id = ?", text(attributes), owner, id);
       change(owner, id, (String) existing.get("kind"), (String) existing.get("name"), action, detail, "manual");
     });
+  }
+
+  // ------------------------------------------------------------------ inference
+
+  /** One derived edge: what the rule concluded and the confidence it carries over. */
+  record Inferred(UUID source, UUID target, String type, String rule, Integer confidence) {}
+
+  private record Edge(UUID id, UUID source, UUID target, String type, Integer confidence, String inferredBy,
+      String sourceKind, String targetKind, String sourceName, String targetName, String sourceTlp, String targetTlp) {}
+
+  static final Set<String> ATTRIBUTION_TARGETS = Set.of("actor", "campaign");
+
+  /**
+   * Recomputes every inferred relationship of the owner and applies the difference:
+   * <ul>
+   *   <li>{@code alias-attribution}: identities joined by {@code alias-of} share every attribution
+   *       ({@code attributed-to} an actor or campaign) of any member;</li>
+   *   <li>{@code rotation-inheritance}: infrastructure joined by {@code rotation-of} shares the
+   *       attributions of any member, and whoever {@code uses} one member uses them all;</li>
+   *   <li>{@code indicator-propagation}: an indicator {@code based-on} an observable {@code indicates}
+   *       every actor or campaign the observable is attributed to or used by (including the edges
+   *       the first two rules derived).</li>
+   * </ul>
+   * Only explicit edges are premises of the first two rules, so retracting an explicit edge always
+   * retracts what was derived from it. An explicit edge with the same endpoints and type wins.
+   *
+   * @return the number of edges added and retracted
+   */
+  Map<String, Integer> infer(long owner, String source, List<Runnable> after) {
+    List<Edge> edges = new ArrayList<>();
+    for (var row : jdbc.queryForList(
+        "SELECT r.id, r.source_id, r.target_id, r.type, r.confidence, r.inferred_by, s.kind AS sk, t.kind AS tk,"
+            + " s.name AS sn, t.name AS tn, s.tlp AS stlp, t.tlp AS ttlp FROM cti_relationships r"
+            + " JOIN cti_objects s ON s.owner_id = r.owner_id AND s.id = r.source_id"
+            + " JOIN cti_objects t ON t.owner_id = r.owner_id AND t.id = r.target_id"
+            + " WHERE r.owner_id = ? AND r.type IN ('alias-of','attributed-to','rotation-of','uses','based-on','indicates')",
+        owner))
+      edges.add(new Edge((UUID) row.get("id"), (UUID) row.get("source_id"), (UUID) row.get("target_id"), (String) row.get("type"),
+          row.get("confidence") == null ? null : ((Number) row.get("confidence")).intValue(), (String) row.get("inferred_by"),
+          (String) row.get("sk"), (String) row.get("tk"), (String) row.get("sn"), (String) row.get("tn"),
+          (String) row.get("stlp"), (String) row.get("ttlp")));
+    Map<UUID, String[]> heads = new HashMap<>();
+    for (Edge e : edges) {
+      heads.put(e.source(), new String[] {e.sourceKind(), e.sourceName(), e.sourceTlp()});
+      heads.put(e.target(), new String[] {e.targetKind(), e.targetName(), e.targetTlp()});
+    }
+    List<Edge> explicit = edges.stream().filter(e -> e.inferredBy() == null).toList();
+    Set<List<Object>> asserted = new HashSet<>();
+    for (Edge e : explicit) asserted.add(List.of(e.source(), e.target(), e.type()));
+    Map<List<Object>, Inferred> desired = new LinkedHashMap<>();
+    java.util.function.Consumer<Inferred> want = edge -> {
+      List<Object> key = List.of(edge.source(), edge.target(), edge.type());
+      if (!edge.source().equals(edge.target()) && !asserted.contains(key)) desired.putIfAbsent(key, edge);
+    };
+
+    // Rule 1 and 2: components joined by alias-of (identities) or rotation-of (infrastructure).
+    for (String[] rule : new String[][] {{"alias-of", "identity", "alias-attribution"}, {"rotation-of", "infrastructure", "rotation-inheritance"}}) {
+      Map<UUID, UUID> parent = new HashMap<>();
+      for (Edge e : explicit)
+        if (e.type().equals(rule[0]) && e.sourceKind().equals(rule[1]) && e.targetKind().equals(rule[1])) union(parent, e.source(), e.target());
+      Map<UUID, List<UUID>> components = new HashMap<>();
+      for (UUID member : new ArrayList<>(parent.keySet())) components.computeIfAbsent(find(parent, member), k -> new ArrayList<>()).add(member);
+      for (List<UUID> members : components.values()) {
+        Set<UUID> set = new HashSet<>(members);
+        for (Edge e : explicit) {
+          if (e.type().equals("attributed-to") && set.contains(e.source()) && ATTRIBUTION_TARGETS.contains(e.targetKind()))
+            for (UUID member : members) want.accept(new Inferred(member, e.target(), "attributed-to", rule[2], e.confidence()));
+          if (rule[1].equals("infrastructure") && e.type().equals("uses") && set.contains(e.target()))
+            for (UUID member : members) want.accept(new Inferred(e.source(), member, "uses", rule[2], e.confidence()));
+        }
+      }
+    }
+    // Rule 3: indicator based-on X, X attributed to / used by an actor or campaign.
+    Map<UUID, Map<UUID, Integer>> attributedTo = new HashMap<>();
+    List<Inferred> premises = new ArrayList<>(desired.values());
+    for (Edge e : explicit) premises.add(new Inferred(e.source(), e.target(), e.type(), null, e.confidence()));
+    for (Inferred e : premises) {
+      String sk = heads.get(e.source())[0];
+      String tk = heads.get(e.target())[0];
+      if (e.type().equals("attributed-to") && ATTRIBUTION_TARGETS.contains(tk))
+        attributedTo.computeIfAbsent(e.source(), k -> new LinkedHashMap<>()).putIfAbsent(e.target(), e.confidence());
+      if (e.type().equals("uses") && ATTRIBUTION_TARGETS.contains(sk))
+        attributedTo.computeIfAbsent(e.target(), k -> new LinkedHashMap<>()).putIfAbsent(e.source(), e.confidence());
+    }
+    for (Edge e : explicit)
+      if (e.type().equals("based-on") && "indicator".equals(e.sourceKind()))
+        attributedTo.getOrDefault(e.target(), Map.of()).forEach((actor, confidence) ->
+            want.accept(new Inferred(e.source(), actor, "indicates", "indicator-propagation", min(confidence, e.confidence()))));
+
+    // Apply the difference.
+    Map<List<Object>, Edge> existing = new HashMap<>();
+    for (Edge e : edges) if (e.inferredBy() != null) existing.put(List.of(e.source(), e.target(), e.type()), e);
+    int added = 0;
+    int retracted = 0;
+    for (var entry : desired.entrySet()) {
+      Inferred edge = entry.getValue();
+      Edge current = existing.remove(entry.getKey());
+      if (current != null) {
+        if (!Objects.equals(current.inferredBy(), edge.rule()) || !Objects.equals(current.confidence(), edge.confidence()))
+          jdbc.update("UPDATE cti_relationships SET inferred_by = ?, confidence = ?, updated_at = now() WHERE owner_id = ? AND id = ?",
+              edge.rule(), edge.confidence(), owner, current.id());
+        continue;
+      }
+      String[] from = heads.get(edge.source());
+      String[] to = heads.get(edge.target());
+      if (!taxonomy.relationshipAllowed(edge.type(), from[0], to[0])) continue;
+      UUID id = UUID.randomUUID();
+      int inserted = jdbc.update(
+          "INSERT INTO cti_relationships (owner_id, id, source_id, target_id, type, confidence, description, tlp, source, inferred_by)"
+              + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (owner_id, source_id, target_id, type) DO NOTHING",
+          owner, id, edge.source(), edge.target(), edge.type(), edge.confidence(), "Inferred by rule " + edge.rule(),
+          CtiTaxonomy.stricterTlp(from[2], to[2]), source, edge.rule());
+      if (inserted == 1) {
+        added++;
+        change(owner, edge.source(), from[0], from[1], "inferred",
+            Map.of("type", edge.type(), "targetId", edge.target().toString(), "targetName", to[1], "rule", edge.rule()), source);
+        after.add(() -> graph.upsertRelationship(owner, id, edge.source(), edge.target(), edge.type()));
+      }
+    }
+    for (Edge stale : existing.values()) {
+      jdbc.update("DELETE FROM cti_relationships WHERE owner_id = ? AND id = ?", owner, stale.id());
+      retracted++;
+      change(owner, stale.source(), stale.sourceKind(), stale.sourceName(), "retracted",
+          Map.of("type", stale.type(), "targetId", stale.target().toString(), "targetName", stale.targetName(), "rule", stale.inferredBy()), source);
+      after.add(() -> graph.deleteRelationship(owner, stale.id()));
+    }
+    return Map.of("added", added, "retracted", retracted);
+  }
+
+  private static UUID find(Map<UUID, UUID> parent, UUID node) {
+    parent.putIfAbsent(node, node);
+    UUID root = node;
+    while (!parent.get(root).equals(root)) root = parent.get(root);
+    while (!parent.get(node).equals(root)) {
+      UUID next = parent.get(node);
+      parent.put(node, root);
+      node = next;
+    }
+    return root;
+  }
+
+  private static void union(Map<UUID, UUID> parent, UUID a, UUID b) {
+    UUID ra = find(parent, a);
+    UUID rb = find(parent, b);
+    if (!ra.equals(rb)) parent.put(ra, rb);
+  }
+
+  private static Integer min(Integer left, Integer right) {
+    if (left == null) return right;
+    if (right == null) return left;
+    return Math.min(left, right);
+  }
+
+  /** Re-runs inference for the owner, e.g. after a rule change. */
+  public Map<String, Integer> reinfer(long owner) {
+    List<Runnable> after = new ArrayList<>();
+    Map<String, Integer> result = tx.execute(status -> infer(owner, "inference", after));
+    after.forEach(Runnable::run);
+    return result;
+  }
+
+  // ------------------------------------------------------------------ notes and opinions
+
+  public Map<String, Object> addNote(long owner, UUID objectId, NoteInput input) {
+    return tx.execute(status -> {
+      Map<String, Object> object = head(owner, objectId);
+      String[] valid = note(input, (String) object.get("tlp"));
+      UUID id = UUID.randomUUID();
+      jdbc.update("INSERT INTO cti_notes (owner_id, id, object_id, kind, opinion, body, tlp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          owner, id, objectId, valid[0], valid[1], valid[2], valid[3]);
+      change(owner, objectId, (String) object.get("kind"), (String) object.get("name"),
+          "opinion".equals(valid[0]) ? "opinion-added" : "note-added", valid[1] == null ? Map.of() : Map.of("opinion", valid[1]), "manual");
+      return note(owner, id);
+    });
+  }
+
+  public Map<String, Object> updateNote(long owner, UUID id, NoteInput input) {
+    if (input.revision() == null) throw bad("CTI_REVISION_REQUIRED");
+    return tx.execute(status -> {
+      var rows = jdbc.queryForList("SELECT n.object_id, n.kind, n.revision, o.kind AS object_kind, o.name, o.tlp FROM cti_notes n"
+          + " JOIN cti_objects o ON o.owner_id = n.owner_id AND o.id = n.object_id WHERE n.owner_id = ? AND n.id = ? FOR UPDATE OF n", owner, id);
+      if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "CTI_NOT_FOUND");
+      var row = rows.get(0);
+      if (((Number) row.get("revision")).longValue() != input.revision())
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "CTI_STALE_REVISION");
+      if (input.kind() != null && !input.kind().equals(row.get("kind"))) throw bad("CTI_KIND_IMMUTABLE");
+      String[] valid = note(new NoteInput((String) row.get("kind"), input.body(), input.opinion(), input.tlp(), null), (String) row.get("tlp"));
+      jdbc.update("UPDATE cti_notes SET opinion = ?, body = ?, tlp = ?, revision = revision + 1, updated_at = now() WHERE owner_id = ? AND id = ?",
+          valid[1], valid[2], valid[3], owner, id);
+      change(owner, (UUID) row.get("object_id"), (String) row.get("object_kind"), (String) row.get("name"), "note-updated", Map.of(), "manual");
+      return note(owner, id);
+    });
+  }
+
+  public void deleteNote(long owner, UUID id) {
+    tx.executeWithoutResult(status -> {
+      var rows = jdbc.queryForList("DELETE FROM cti_notes n USING cti_objects o WHERE n.owner_id = ? AND n.id = ?"
+          + " AND o.owner_id = n.owner_id AND o.id = n.object_id RETURNING o.id, o.kind, o.name", owner, id);
+      if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "CTI_NOT_FOUND");
+      change(owner, (UUID) rows.get(0).get("id"), (String) rows.get(0).get("kind"), (String) rows.get(0).get("name"), "note-deleted", Map.of(), "manual");
+    });
+  }
+
+  /** Adds a note unless the record already has one of the same kind, opinion and text (idempotent imports). */
+  boolean addNoteIfAbsent(long owner, UUID objectId, NoteInput input) {
+    String[] valid = note(input, (String) head(owner, objectId).get("tlp"));
+    boolean present = !jdbc.queryForList("SELECT 1 FROM cti_notes WHERE owner_id = ? AND object_id = ? AND kind = ?"
+        + " AND opinion IS NOT DISTINCT FROM ? AND body = ?", owner, objectId, valid[0], valid[1], valid[2]).isEmpty();
+    if (present) return false;
+    addNote(owner, objectId, input);
+    return true;
+  }
+
+  /** Validated [kind, opinion, body, tlp]. */
+  private static String[] note(NoteInput input, String objectTlp) {
+    String kind = input.kind() == null ? "note" : input.kind();
+    if (!Set.of("note", "opinion").contains(kind)) throw bad("CTI_INVALID_NOTE_KIND");
+    String body = input.body() == null ? "" : input.body().trim();
+    if (body.isEmpty() && "note".equals(kind)) throw bad("CTI_NOTE_BODY_REQUIRED");
+    if (body.length() > 20000) throw bad("CTI_NOTE_TOO_LONG");
+    String opinion = "opinion".equals(kind) ? input.opinion() : null;
+    if ("opinion".equals(kind) && (opinion == null || !OPINIONS.contains(opinion))) throw bad("CTI_INVALID_OPINION");
+    if ("note".equals(kind) && input.opinion() != null && !input.opinion().isBlank()) throw bad("CTI_INVALID_OPINION");
+    String tlp = input.tlp() == null || input.tlp().isBlank() ? objectTlp : CtiTaxonomy.tlp(input.tlp());
+    return new String[] {kind, opinion, body, tlp};
+  }
+
+  private Map<String, Object> note(long owner, UUID id) {
+    return notes(owner, null, id).get(0);
+  }
+
+  List<Map<String, Object>> notes(long owner, UUID objectId) {
+    return notes(owner, objectId, null);
+  }
+
+  private List<Map<String, Object>> notes(long owner, UUID objectId, UUID noteId) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (var row : jdbc.queryForList("SELECT id, object_id, kind, opinion, body, tlp, revision, created_at, updated_at FROM cti_notes"
+        + " WHERE owner_id = ? AND " + (noteId == null ? "object_id = ?" : "id = ?") + " ORDER BY created_at DESC LIMIT 500",
+        owner, noteId == null ? objectId : noteId)) {
+      Map<String, Object> note = new LinkedHashMap<>();
+      note.put("id", row.get("id"));
+      note.put("objectId", row.get("object_id"));
+      note.put("kind", row.get("kind"));
+      note.put("opinion", row.get("opinion"));
+      note.put("body", row.get("body"));
+      note.put("tlp", row.get("tlp"));
+      note.put("revision", ((Number) row.get("revision")).longValue());
+      note.put("createdAt", iso(row.get("created_at")));
+      note.put("updatedAt", iso(row.get("updated_at")));
+      out.add(note);
+    }
+    return out;
+  }
+
+  /** Every note of the owner, for STIX export. */
+  List<Map<String, Object>> allNotes(long owner) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (var row : jdbc.queryForList("SELECT id FROM cti_notes WHERE owner_id = ? ORDER BY created_at, id", owner))
+      out.add(note(owner, (UUID) row.get("id")));
+    return out;
+  }
+
+  // ------------------------------------------------------------------ sightings
+
+  public Map<String, Object> addSighting(long owner, UUID objectId, SightingInput input, String source) {
+    List<Runnable> after = new ArrayList<>();
+    Map<String, Object> result = tx.execute(status -> {
+      UUID id = recordSighting(owner, objectId, input, source(source));
+      return Map.<String, Object>of("id", id == null ? "" : id.toString(), "recorded", id != null);
+    });
+    after.forEach(Runnable::run);
+    return result;
+  }
+
+  /** Inserts one sighting; returns null when the identical report already exists. */
+  private UUID recordSighting(long owner, UUID objectId, SightingInput input, String source) {
+    Map<String, Object> object = head(owner, objectId);
+    if (!SIGHTABLE.contains((String) object.get("kind"))) throw bad("CTI_NOT_SIGHTABLE");
+    Instant first = CtiValues.instant(input.firstSeen());
+    Instant last = CtiValues.instant(input.lastSeen());
+    if (first == null && last == null) first = last = Instant.now();
+    if (first == null) first = last;
+    if (last == null) last = first;
+    if (first.isAfter(last)) throw bad("CTI_INVALID_TIMEFRAME");
+    if (last.isAfter(Instant.now().plusSeconds(86400))) throw bad("CTI_SIGHTING_IN_FUTURE");
+    int count = input.count() == null ? 1 : input.count();
+    if (count < 1 || count > 1_000_000_000) throw bad("CTI_INVALID_SIGHTING_COUNT");
+    String where = input.where() == null ? "" : input.where().trim();
+    if (where.length() > 256) throw bad("CTI_SIGHTING_WHERE_TOO_LONG");
+    List<String> observed = new ArrayList<>();
+    if (input.observed() != null) for (String value : input.observed()) {
+      if (value == null || value.isBlank()) continue;
+      if (value.length() > 2048 || observed.size() >= 100) throw bad("CTI_SIGHTING_OBSERVED_TOO_LARGE");
+      observed.add(CtiValues.refang(value));
+    }
+    UUID id = UUID.randomUUID();
+    int inserted = jdbc.update(
+        "INSERT INTO cti_sightings (owner_id, id, object_id, first_seen, last_seen, count, where_sighted, source, confidence,"
+            + " description, observed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))"
+            + " ON CONFLICT (owner_id, object_id, where_sighted, source, first_seen, last_seen) DO NOTHING",
+        owner, id, objectId, Timestamp.from(first), Timestamp.from(last), count, where, source, confidence(input.confidence()),
+        description(input.description()), text(observed));
+    if (inserted == 0) return null;
+    jdbc.update("UPDATE cti_objects SET first_seen = least(first_seen, ?), last_seen = greatest(last_seen, ?), updated_at = now()"
+        + " WHERE owner_id = ? AND id = ?", Timestamp.from(first), Timestamp.from(last), owner, objectId);
+    change(owner, objectId, (String) object.get("kind"), (String) object.get("name"), "sighted",
+        Map.of("count", count, "where", where, "lastSeen", last.toString()), source);
+    return id;
+  }
+
+  public void deleteSighting(long owner, UUID id) {
+    tx.executeWithoutResult(status -> {
+      var rows = jdbc.queryForList("DELETE FROM cti_sightings s USING cti_objects o WHERE s.owner_id = ? AND s.id = ?"
+          + " AND o.owner_id = s.owner_id AND o.id = s.object_id RETURNING o.id, o.kind, o.name", owner, id);
+      if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "CTI_NOT_FOUND");
+      change(owner, (UUID) rows.get(0).get("id"), (String) rows.get(0).get("kind"), (String) rows.get(0).get("name"),
+          "sighting-deleted", Map.of(), "manual");
+    });
+  }
+
+  List<Map<String, Object>> sightings(long owner, UUID objectId) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (var row : jdbc.queryForList("SELECT id, object_id, first_seen, last_seen, count, where_sighted, source, confidence,"
+        + " description, observed::text AS observed, created_at FROM cti_sightings WHERE owner_id = ?"
+        + (objectId == null ? "" : " AND object_id = ?") + " ORDER BY last_seen DESC LIMIT " + (objectId == null ? "100000" : "200"),
+        objectId == null ? new Object[] {owner} : new Object[] {owner, objectId})) {
+      Map<String, Object> sighting = new LinkedHashMap<>();
+      sighting.put("id", row.get("id"));
+      sighting.put("objectId", row.get("object_id"));
+      sighting.put("firstSeen", iso(row.get("first_seen")));
+      sighting.put("lastSeen", iso(row.get("last_seen")));
+      sighting.put("count", ((Number) row.get("count")).intValue());
+      sighting.put("where", row.get("where_sighted"));
+      sighting.put("source", row.get("source"));
+      sighting.put("confidence", row.get("confidence"));
+      sighting.put("description", row.get("description"));
+      sighting.put("observed", read((String) row.get("observed")));
+      sighting.put("createdAt", iso(row.get("created_at")));
+      out.add(sighting);
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ ATT&CK
+
+  /** Which records use which ATT&CK technique, for the matrix view. */
+  public Map<String, Object> attackUsage(long owner) {
+    Map<String, List<Map<String, Object>>> usage = new TreeMap<>();
+    for (var row : jdbc.queryForList(
+        "SELECT o.id, o.kind, o.name, o.status, t.value AS technique FROM cti_objects o,"
+            + " jsonb_array_elements_text(CASE WHEN jsonb_typeof(o.attributes->'ttps') = 'array' THEN o.attributes->'ttps' ELSE '[]'::jsonb END) t(value)"
+            + " WHERE o.owner_id = ? ORDER BY lower(o.name)", owner))
+      usage.computeIfAbsent((String) row.get("technique"), k -> new ArrayList<>()).add(
+          Map.of("id", row.get("id"), "kind", row.get("kind"), "name", row.get("name"), "status", row.get("status")));
+    return Map.of("usage", usage);
+  }
+
+  CtiTaxonomy.Kind taxonomyKind(String kind) {
+    return taxonomy.kind(kind);
+  }
+
+  /** The record with this kind and (already normalized) dedupe key, or null. */
+  Map<String, Object> findByNaturalKey(long owner, String kind, String key) {
+    return findByKey(owner, kind, key, false);
+  }
+
+  /** True when a record with this kind and dedupe key exists. */
+  boolean exists(long owner, String kind, String key) {
+    return findByKey(owner, kind, CtiValues.normalizeKey(key), false) != null;
   }
 
   // ------------------------------------------------------------------ helpers
@@ -749,18 +1216,54 @@ public class CtiService {
         text(c.labels()), ts(c.firstSeen()), ts(c.lastSeen()), owner, id);
   }
 
-  private List<String> diff(Map<String, Object> existing, Candidate c) {
-    List<String> changed = new ArrayList<>();
-    if (!Objects.equals(existing.get("name"), c.name())) changed.add("name");
-    if (!Objects.equals(existing.get("status"), c.status())) changed.add("status");
-    if (!Objects.equals(existing.get("tlp"), c.tlp())) changed.add("tlp");
-    if (!Objects.equals(existing.get("confidence"), c.confidence())) changed.add("confidence");
-    if (!Objects.equals(existing.get("description"), c.description())) changed.add("description");
-    if (!Objects.equals(existing.get("attributes"), c.attributes())) changed.add("attributes");
-    if (!Objects.equals(strings((JsonNode) existing.get("labels")), c.labels())) changed.add("labels");
-    if (!Objects.equals(existing.get("firstSeen"), c.firstSeen() == null ? null : c.firstSeen().toString())) changed.add("firstSeen");
-    if (!Objects.equals(existing.get("lastSeen"), c.lastSeen() == null ? null : c.lastSeen().toString())) changed.add("lastSeen");
-    return changed;
+  /**
+   * Field-level diff for the change journal: {@code fields} lists what changed and {@code changes}
+   * holds each field's old and new value. Attributes are diffed per key ({@code attributes.value}).
+   * Long text is truncated so the journal stays bounded.
+   */
+  Map<String, Object> diff(Map<String, Object> existing, Candidate c) {
+    Map<String, Object> changes = new LinkedHashMap<>();
+    compare(changes, "name", existing.get("name"), c.name());
+    compare(changes, "status", existing.get("status"), c.status());
+    compare(changes, "tlp", existing.get("tlp"), c.tlp());
+    compare(changes, "confidence", existing.get("confidence"), c.confidence());
+    compare(changes, "description", existing.get("description"), c.description());
+    JsonNode before = (JsonNode) existing.get("attributes");
+    Set<String> keys = new TreeSet<>();
+    before.fieldNames().forEachRemaining(keys::add);
+    c.attributes().fieldNames().forEachRemaining(keys::add);
+    for (String key : keys) {
+      JsonNode was = before.get(key);
+      JsonNode now = c.attributes().get(key);
+      if (!Objects.equals(was, now)) compare(changes, "attributes." + key, was, now);
+    }
+    compare(changes, "labels", strings((JsonNode) existing.get("labels")), c.labels());
+    compare(changes, "firstSeen", existing.get("firstSeen"), c.firstSeen() == null ? null : c.firstSeen().toString());
+    compare(changes, "lastSeen", existing.get("lastSeen"), c.lastSeen() == null ? null : c.lastSeen().toString());
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("fields", new ArrayList<>(changes.keySet()));
+    out.put("changes", changes);
+    return out;
+  }
+
+  private void compare(Map<String, Object> changes, String field, Object before, Object after) {
+    if (Objects.equals(before, after)) return;
+    Map<String, Object> pair = new LinkedHashMap<>();
+    pair.put("from", bounded(before));
+    pair.put("to", bounded(after));
+    changes.put(field, pair);
+  }
+
+  private Object bounded(Object value) {
+    if (value == null) return null;
+    if (value instanceof JsonNode node) {
+      if (node.isTextual()) return bounded(node.asText());
+      if (node.isArray()) return bounded(strings(node));
+      return node;
+    }
+    if (value instanceof String text) return text.length() > 300 ? text.substring(0, 299) + "…" : text;
+    if (value instanceof List<?> list) return list.size() > 50 ? List.copyOf(list.subList(0, 50)) : list;
+    return value;
   }
 
   private Runnable project(long owner, UUID id, Candidate c) {
@@ -809,6 +1312,12 @@ public class CtiService {
     out.put("revision", ((Number) row.get("revision")).longValue());
     out.put("createdAt", iso(row.get("created_at")));
     out.put("updatedAt", iso(row.get("updated_at")));
+    if (row.containsKey("score")) {
+      out.put("score", row.get("score") == null ? null : ((Number) row.get("score")).intValue());
+      out.put("lastSighted", iso(row.get("last_sighted")));
+      out.put("sightingCount", row.get("sightings") == null ? 0L : ((Number) row.get("sightings")).longValue());
+      if (row.get("half_life") != null) out.put("halfLifeDays", ((Number) row.get("half_life")).intValue());
+    }
     return out;
   }
 

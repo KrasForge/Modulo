@@ -1,4 +1,6 @@
-import { ArrowLeftRight, LayoutDashboard, Network } from 'lucide-react';
+import { ArrowLeftRight, Grid3x3, LayoutDashboard, Network, Share2 } from 'lucide-react';
+import { CtiAttackView } from '../../../cti/CtiAttackView';
+import { CtiTaxiiView } from '../../../cti/CtiTaxiiView';
 import { CtiDashboardView } from '../../../cti/CtiDashboardView';
 import { CtiExchangeView } from '../../../cti/CtiExchangeView';
 import { CtiGraphView } from '../../../cti/CtiGraphView';
@@ -8,7 +10,9 @@ const plugin: PluginModule = {
   activate(ctx) {
     ctx.addView({ id: 'cti-dashboard', label: 'Dashboard', icon: LayoutDashboard, order: 10, mode: 'cti', component: CtiDashboardView });
     ctx.addView({ id: 'cti-graph', label: 'Graph', icon: Network, order: 11, mode: 'cti', component: CtiGraphView });
-    ctx.addView({ id: 'cti-exchange', label: 'STIX / MISP', icon: ArrowLeftRight, order: 40, mode: 'cti', component: CtiExchangeView });
+    ctx.addView({ id: 'cti-attack', label: 'ATT&CK', icon: Grid3x3, order: 12, mode: 'cti', component: CtiAttackView });
+    ctx.addView({ id: 'cti-exchange', label: 'STIX / MISP / CSV', icon: ArrowLeftRight, order: 40, mode: 'cti', component: CtiExchangeView });
+    ctx.addView({ id: 'cti-taxii', label: 'TAXII', icon: Share2, order: 41, mode: 'cti', component: CtiTaxiiView });
   },
 };
 export default plugin;

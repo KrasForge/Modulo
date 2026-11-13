@@ -44,7 +44,7 @@ server (`online`).
 | `citation-manager` | 1 view | CRUD (notes/state) | — | desktop-native-services (server/remote service (P17)), external-links (Custom Tabs), file-download (share sheet / SAF create), file-picker (Storage Access Framework), notifications (POST_NOTIFICATIONS) | /api/workspaces/personal | online | P07 | P17 |
 | `cti-actors` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
 | `cti-campaigns` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
-| `cti-dashboard` | 3 views | CRUD (notes/state) | — | file-download (share sheet / SAF create), file-picker (Storage Access Framework) | /api/cti | queue | P07 | P15 |
+| `cti-dashboard` | 5 views | CRUD (notes/state) | — | file-download (share sheet / SAF create), file-picker (Storage Access Framework) | /api/cti | queue | P07 | P15 |
 | `cti-disclosures` | 1 view | CRUD (notes/state) | — | file-download (share sheet / SAF create) | /api/cti | queue | P07 | P13 |
 | `cti-enrichment` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |
 | `cti-identities` | 1 view | CRUD (notes/state) | — | — | /api/cti | queue | P07 | P13 |

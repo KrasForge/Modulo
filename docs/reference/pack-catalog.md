@@ -139,7 +139,7 @@ records live in the backend CTI module (`/api/cti`), not in plugin state; see
   CTI Malware & Tooling (installs Sources & Bibliography for sample evidence),
   CTI Indicators, CTI Campaigns & Clusters, CTI Victims & Exposure
 - Analyst loop: CTI Leads, CTI Watches, CTI Enrichment Log, CTI Disclosures
-- CTI Dashboard, Graph & Exchange (installs every CTI plugin)
+- CTI Dashboard, Graph & Exchange (installs every CTI plugin): dashboard, graph, ATT&CK matrix, STIX/MISP/CSV exchange and TAXII 2.1
 - Reused: Graph, Timeline, Saved Searches, Tags, Executable Runbooks, What Changed?,
   Workspace Capsules
 

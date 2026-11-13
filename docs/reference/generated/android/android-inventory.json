@@ -5,7 +5,7 @@
     "catalog": 231,
     "runnable": 231,
     "contributions": {
-      "views": 221,
+      "views": 223,
       "notePanels": 16,
       "noteFences": 8,
       "editorActions": 13,
@@ -1033,7 +1033,9 @@
         "views": [
           "cti-dashboard",
           "cti-graph",
-          "cti-exchange"
+          "cti-attack",
+          "cti-exchange",
+          "cti-taxii"
         ],
         "notePanels": [],
         "noteFences": [],

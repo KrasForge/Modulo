@@ -4,6 +4,7 @@ import { Button, Checkbox, Input, Label, cn } from '@/ui';
 import { Choice, Field, Panel, ViewShell } from '../workspace/viewkit';
 import { TLP_LEVELS, ctiApi, type Tlp } from './ctiApi';
 import { downloadJson, stamp } from './download';
+import { CtiCsvPanel } from './CtiCsvPanel';
 
 const INGEST_EXAMPLE = `POST /api/cti/ingest
 Authorization: Bearer <access token>
@@ -45,7 +46,7 @@ export function CtiExchangeView() {
   });
 
   return (
-    <ViewShell title="CTI Exchange" icon={ArrowLeftRight} subtitle="STIX 2.1 and MISP interoperability. Exports apply a TLP ceiling and never include leads, watches or enrichment.">
+    <ViewShell title="CTI Exchange" icon={ArrowLeftRight} subtitle="STIX 2.1, MISP and CSV interoperability. Exports apply a TLP ceiling and never include leads, watches or enrichment. TAXII has its own view.">
       {message && <p role={message.error ? 'alert' : 'status'} className={cn('mb-4 rounded-md border px-3 py-2 text-[13px]', message.error ? 'border-destructive/40 text-destructive' : 'border-border text-muted-foreground')}>{message.text}</p>}
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel title="Export" icon={Download} description="Only records whose TLP is at or below the ceiling are included; a relationship is included only when both ends are.">
@@ -72,6 +73,7 @@ export function CtiExchangeView() {
           <input id="cti-stix-file" type="file" accept="application/json,.json" className="mt-2 block text-[13px]" disabled={busy}
             onChange={event => { importFile(event.target.files?.[0]); event.target.value = ''; }} />
         </Panel>
+        <CtiCsvPanel />
         <Panel title="Feeding the graph from watches" description="Cron watches and agents post findings to the ingest API. Objects are upserted by their dedupe key, lists are unioned, the seen window only widens, and the watch's run is recorded and linked to what it found." className="xl:col-span-2">
           <pre className="overflow-x-auto rounded-md bg-surface-2 p-3 text-xs">{INGEST_EXAMPLE}</pre>
           <p className="mt-2 text-[13px] text-muted-foreground">From a shell, <code>tools/modulo_mcp/cti_ingest.py findings.json</code> posts a batch with the same token the Modulo MCP server uses.</p>

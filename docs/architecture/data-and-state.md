@@ -98,6 +98,7 @@ Never edit a migration after it has been deployed; add a new one.
 | V27 | `remote_service_credentials` (AES-GCM encrypted) |
 | V28 | `praxis_submissions` |
 | V29 | `cti_objects`, `cti_relationships`, `cti_changes` (threat-intelligence knowledge base) |
+| V30 | `cti_relationships.inferred_by`, `cti_notes`, `cti_sightings`, `cti_taxii_collections`, `cti_taxii_tokens`, `cti_taxii_feeds` |
 
 Several tables are protected by database triggers, not only by service code: for
 example, workflow runs reject terminal-state regressions and invalid attempt

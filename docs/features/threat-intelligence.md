@@ -28,7 +28,7 @@ appear under **Work → Threat Intelligence**.
 | `cti-watches` | Recurring watches and their last run | never exported |
 | `cti-enrichment` | Log of every OSINT lookup | never exported |
 | `cti-disclosures` | Vendor, registrar and law-enforcement reports and takedown requests | `report` in a capsule |
-| `cti-dashboard` | Dashboard, **Graph** and **STIX / MISP** views; installs every CTI plugin | — |
+| `cti-dashboard` | Dashboard, **Graph**, **ATT&CK**, **STIX / MISP / CSV** and **TAXII** views; installs every CTI plugin | — |
 
 The pack also installs Graph, Timeline, Saved Searches, Tags, Executable Runbooks,
 What Changed? and Workspace Capsules. `cti-malware` depends on Sources &
@@ -100,9 +100,36 @@ change is also projected as `(:CtiObject {owner, id})-[:CTI_REL {type}]->` nodes
 and edges (best effort, like the note graph); `POST /api/cti/graph/reproject`
 rebuilds the projection for your account.
 
+### Inference rules
+
+The knowledge base derives relationships from the ones you record, so a fact
+stated once applies everywhere it logically should. Three rules run after every
+change to relationships (link, unlink, ingest, import, merge, delete):
+
+| Rule | From | Derives |
+| --- | --- | --- |
+| `alias-attribution` | identities joined by `alias-of`, one of them `attributed-to` an actor or campaign | the same attribution for every identity in the alias chain |
+| `rotation-inheritance` | infrastructure joined by `rotation-of`, one of them `attributed-to` an actor or campaign, or `uses`d by an actor, campaign or malware | the same attribution and use for every rotation |
+| `indicator-propagation` | an indicator `based-on` an observable that is attributed to or used by an actor or campaign (including through the two rules above) | `indicates` that actor or campaign |
+
+- Only relationships you or an ingest recorded are premises of the first two
+  rules, so removing a premise retracts everything derived from it. Retractions
+  and derivations are journaled (`inferred`, `retracted`, with the rule).
+- An inferred relationship carries the premise's confidence (the lower of the
+  two for `indicator-propagation`), the stricter TLP of its endpoints, and a
+  dashed line in the graph. It cannot be removed by hand: remove its premise.
+- Recording a relationship that already exists as an inferred one promotes it
+  to an explicit relationship, which then survives the premise.
+- Inferred relationships are exported to STIX with `x_modulo_inferred_by`.
+- **Re-run inference** on the dashboard (`POST /api/cti/inference/run`) rebuilds
+  them, for example after an upgrade adds a rule.
+
+Because aliases inherit attribution, the **Unattributed identities** queue only
+lists identities that no alias chain connects to an actor.
+
 ## The analyst loop
 
-**Saved views.** The record lists and the dashboard share seven server-side
+**Saved views.** The record lists and the dashboard share eight server-side
 queues:
 
 | View | Selects |
@@ -112,6 +139,7 @@ queues:
 | `stale-leads` | Open leads not updated for 14 days |
 | `unattributed-identities` | Identities with no attribution anywhere along their `alias-of` chain (no `attributed-to`/`part-of` out, no `controls`/`uses` in) |
 | `expiring-indicators` | Active indicators whose valid-until date is at most 14 days away |
+| `decayed-indicators` | Active indicators whose score has decayed below 20 |
 | `unhealthy-watches` | Watches marked failing, or active ones that have not reported for 2 days |
 | `unnotified-victims` | Victims not marked notified |
 
@@ -121,16 +149,106 @@ page is "everything about lead 153".
 **Enrichment.** Every knowledge record has an *Enrichment* panel listing prior
 lookups. *Log lookup* records the provider, query, summary and result URL as an
 enrichment record linked with `enriches`. The same provider and query are one
-record, so logging a repeat updates it rather than duplicating the work.
+record, so logging a repeat updates it rather than duplicating the work. For
+providers Modulo can call itself, see [Automatic enrichment](#automatic-enrichment).
 
-**What changed?** Every create, update, link, unlink, merge, delete and capsule
-build is appended to a change journal with its source (`manual`, a watch, the
-STIX importer). The dashboard shows it for the last 24 hours, 7 or 30 days, and
-each record shows its own history.
+**Notes and opinions.** Every record has a *Notes & opinions* panel. A note is
+free text; an opinion is one of *strongly disagree* to *strongly agree* with an
+optional explanation, as in STIX. Each has its own TLP (default: the record's),
+is edited with a revision check, and is journaled. Notes and opinions are
+exported as STIX `note` and `opinion` objects referencing their record when both
+pass the TLP ceiling, and imported back without duplicates.
+
+**What changed?** Every create, update, link, unlink, merge, delete, inference,
+sighting, note and capsule build is appended to a change journal with its source
+(`manual`, a watch, the STIX importer, a TAXII feed, a connector). An update
+records each changed field with its old and new value (`status: open → closed`,
+attribute changes per key such as `priority: P2 → P1`; long text is truncated to
+300 characters). The dashboard shows the journal for the last 24 hours, 7 or 30
+days, and each record shows its own history.
 
 **Runbooks.** *Create runbook notes* on the dashboard adds four procedure notes
 that **Executable Runbooks** can run with receipts: pivot an identity, triage new
 C2, prepare a disclosure capsule, and the weekly what-changed review.
+
+## Sightings and indicator scoring
+
+A sighting records that a record was seen: when (first and last time), how many
+times, where (a sensor, organization or feed), what was observed, and its
+source. Sightings can be recorded on indicators, infrastructure, malware,
+identities, actors and campaigns, from the record's *Sightings* panel, the
+`sightings` array of an ingest batch, a STIX import, or the MCP. Reporting the
+same sighting again (same record, place, source and time window) is a no-op, and
+each sighting widens the record's first/last-seen window.
+
+Every indicator has a **score** from 0 to 100, computed whenever it is read:
+
+- start from its confidence (50 when unset);
+- add 5 for each sighting in the last 30 days, at most 20;
+- halve the result for every half-life since its last activity (latest
+  sighting, last seen, or valid-from/creation), by indicator type: IPs 30 days,
+  URLs 45, domains and filenames 90, emails 120, wallets 180, hashes and
+  detection rules (YARA, Sigma, STIX patterns) 365;
+- an indicator that is revoked, expired or past its valid-until date scores 0.
+
+A fresh sighting therefore revives a decayed indicator. The *Decayed indicators*
+queue lists active indicators below 20. Scores appear in lists, on the record and
+in STIX exports (`x_modulo_score`); a MISP export marks an indicator `to_ids`
+only while its score is 20 or more. Sightings are exported as STIX `sighting`
+objects (sightings of identities are not, because STIX sightings reference
+domain objects and identities export as observables).
+
+## ATT&CK
+
+Actors, campaigns and malware carry ATT&CK technique IDs. The editor searches a
+bundled copy of MITRE ATT&CK Enterprise by ID or name, and records show each
+technique with its name and a link to MITRE. The **ATT&CK** view draws the
+Enterprise matrix in tactic order, shading each technique by how many records
+use it or its sub-techniques; filter it to one actor, campaign or malware, or
+show the whole matrix. IDs that are not in the bundled library (renamed, revoked
+or newer) are kept and flagged.
+
+STIX exports emit each technique as an `attack-pattern` with its MITRE name,
+`kill_chain_phases` and external reference, linked by `uses`. Imports read
+techniques back from `uses` relationships to attack patterns.
+
+The library is [`shared/cti/attack-enterprise.v1.json`](../../shared/cti/attack-enterprise.v1.json),
+generated from MITRE's STIX data. To update it:
+
+```sh
+curl -sSLo enterprise-attack.json https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json
+python3 scripts/generate-attack-library.py enterprise-attack.json
+python3 scripts/sync-pack-assets.py
+```
+
+ATT&CK is © The MITRE Corporation and is reproduced under MITRE's terms of use.
+
+## Automatic enrichment
+
+Infrastructure, indicators, wallet and email identities, and malware samples show
+an *Automatic enrichment* panel with the connectors that apply to their value.
+*Run* calls the provider from the server, logs the lookup as an enrichment record
+(`done` or `failed`, with a summary and a link to the result) and ingests what it
+discovered, linked to the record and to the lookup:
+
+| Connector | Applies to | Provider | Discovers |
+| --- | --- | --- | --- |
+| crt.sh certificates | domains | crt.sh certificate transparency | other hostnames under the domain (`related-to`) |
+| urlscan.io | domains, IPs, URLs | urlscan.io search | IPs a domain resolved to, or domains seen on an IP (`resolves-to`) |
+| Passive DNS | domains, IPs | Mnemonic passive DNS | A/AAAA and CNAME answers, or names that resolved to the IP (`resolves-to`, with first/last seen) |
+| Blockchain explorer | TRON, Bitcoin and Ethereum wallets | TRONSCAN, mempool.space, Blockscout | a summary: balance, transactions, creation and last activity |
+
+- A lookup of the same provider and value within ten minutes returns the logged
+  result instead of calling the provider; *Run again* forces a new call. Failed
+  lookups are logged and never reused.
+- Each lookup records at most 50 discoveries. Discovered records take the
+  enriched record's TLP and their source is `enrichment:<provider>`.
+- Requests go through the server's SSRF-safe fetcher (public addresses only
+  unless `modulo.remote.allow-private-networks` is set), so the deployment must
+  allow outbound HTTPS to the providers.
+- urlscan.io works without a key at a low rate; store a key as the
+  `urlscanApiKey` server credential (`PUT /api/remote/credentials/urlscanApiKey`,
+  requires `modulo.remote.credential-key`).
 
 ## Feeding the graph from watches
 
@@ -156,8 +274,9 @@ idempotent batch upsert:
   first/last-seen window only widens, the description is replaced only when one
   is given, and **TLP is never lowered**. Lower a TLP by editing the record.
 - A batch with nothing new reports every object as `unchanged` and writes nothing.
-- Relationship endpoints are a batch `ref`, a record id, or `{"kind", "key"}`
-  where `key` is the dedupe key. An unresolvable endpoint fails the whole batch
+- Relationship endpoints, and the `target` of each entry in an optional
+  `sightings` array, are a batch `ref`, a record id, or `{"kind", "key"}` where
+  `key` is the dedupe key. An unresolvable endpoint fails the whole batch
   with `CTI_UNRESOLVED_REFERENCE`; nothing is written.
 - `watch` records the run on the watch with that type and target (created on
   first use): last run time, last result and the running count of new findings.
@@ -172,9 +291,31 @@ for stdin) posts a batch with the same `MODULO_BASE_URL` and
 rotation.
 
 **Claude and other agents.** The Modulo MCP server exposes `cti_search`,
-`cti_get`, `cti_ingest`, `cti_link`, `cti_changes`, `cti_summary` and `cti_graph`.
+`cti_get`, `cti_ingest`, `cti_link`, `cti_changes`, `cti_summary`, `cti_graph`,
+`cti_enrich`, `cti_add_sighting` and `cti_add_note`.
 An agent asked "what do we know about X?" searches first and records its findings
 through the same idempotent ingest.
+
+## CSV bulk import
+
+**STIX / MISP / CSV → CSV bulk import** imports one kind per file:
+
+- Columns: `name`, `status`, `tlp`, `confidence`, `labels`, `firstSeen`,
+  `lastSeen`, `description`, and the kind's attributes by key (for example
+  `identityType`, `value`, `platform`). *Download template* gives the header row.
+  List cells (labels, list attributes) are separated by `;` or `|`. Booleans
+  accept `true/false`, `yes/no`, `1/0`.
+- `rel:<type>` columns link each row: each cell names targets as
+  `<kind>:<dedupe key>`, for example `rel:attributed-to` = `actor:tronzitveca`
+  or `rel:alias-of` = `identity:handle:apollo1030109`. Targets may be rows of the
+  same file.
+- *Validate* checks every row (values, options, duplicates, relationship rules,
+  unresolvable targets) and lists problems by line. *Import* writes nothing while
+  any row is invalid, unless *Skip invalid rows* is ticked; valid rows are then
+  ingested in one transaction through the same idempotent ingest, so importing
+  the same file again changes nothing, and inference runs on the result.
+- Limits: 5,000 rows and 5 MiB per file; RFC 4180 quoting; a UTF-8 BOM is
+  ignored.
 
 ## Exchange and disclosure
 
@@ -212,6 +353,51 @@ knowledge neighbourhood, filtered by the ceiling and the victim rules above. Its
 SHA-256 over canonical JSON is stamped on the disclosure (`capsuleSha256`,
 `capsuleAt`) and journaled; these fields cannot be set by hand.
 
+## TAXII 2.1
+
+The **TAXII** view publishes collections to partners and subscribes to theirs.
+
+**Publishing (server).** A collection is a TLP-capped view of your knowledge base:
+title, TLP ceiling, whether victims are included (always pseudonymized when
+redacted), and whether partners may read, add objects, or both. Each partner gets
+its own token for one collection, shown once:
+
+- TAXII clients use HTTP Basic with the token ID as username and the secret as
+  password, or `Authorization: Bearer <token id>.<secret>`.
+- Discovery is `https://<your host>/api/taxii2/`; the API root is
+  `/api/taxii2/root/`.
+- A token sees only its collection; any other collection ID answers 404. Revoking
+  a token or deleting the collection stops it immediately. Only the SHA-256 of
+  the secret is stored; *last used* is shown per token.
+- `objects/` serves the collection's STIX export (the same TLP and privacy rules
+  as a file export) with `added_after`, `limit` (default 500, at most 1,000),
+  `next`, `match[id]`, `match[type]` and `match[spec_version]`, and the
+  `X-TAXII-Date-Added-First/Last` headers. An object's `date_added` is its STIX
+  `modified` time. `manifest/`, `objects/{id}/` and `objects/{id}/versions/`
+  are served; only the current version of an object exists.
+- Adding objects (`POST objects/`) to a writable collection imports them through
+  the idempotent STIX import into your knowledge base and returns a completed
+  status resource (`status/{id}/`, kept in memory for the last 1,000 requests).
+- The TAXII endpoints are exempt from the Keycloak session and CSRF checks; the
+  controller authenticates every request except discovery. Set
+  `modulo.cti.taxii.public-url` when the server cannot derive its public URL
+  behind a proxy.
+
+**Subscribing (client).** A feed names a partner's API root URL, collection ID,
+optional username and password, a default TLP for objects that carry no TLP
+marking, and an optional poll interval (at least 15 minutes):
+
+- *Pull* pages through `objects/` from the stored `added_after` cursor (at most
+  20 pages of 500 per pull) and imports each page through the idempotent STIX
+  import with source `taxii:<feed>`. The cursor advances from the server's
+  `X-TAXII-Date-Added-Last`; changing a feed's URL or collection resets it.
+- Feeds with an interval are polled by the server every few minutes when due;
+  each feed is claimed before polling so several backend instances never pull it
+  twice. The last result and time are shown on the feed.
+- The password is AES-GCM sealed with `modulo.remote.credential-key` and never
+  returned; storing one without that key fails with
+  `REMOTE_CREDENTIALS_UNCONFIGURED`. Requests go through the SSRF-safe fetcher.
+
 ## API
 
 All endpoints are under `/api/cti`, owner-scoped, and return
@@ -232,9 +418,24 @@ All endpoints are under `/api/cti`, owner-scoped, and return
 | `GET /export/stix?tlp=&victims=&scope=`, `GET /export/misp?tlp=&info=&scope=` | Exports |
 | `POST /import/stix` | Import a STIX 2.1 bundle |
 | `POST /disclosures/{id}/capsule` | Build a disclosure capsule |
+| `POST /objects/{id}/notes`, `PUT/DELETE /notes/{id}` | Notes and opinions (`PUT` needs `revision`) |
+| `POST /objects/{id}/sightings`, `DELETE /sightings/{id}` | Sightings |
+| `POST /inference/run` | Re-run the inference rules |
+| `GET /attack` | Which records use which ATT&CK technique |
+| `GET /objects/{id}/enrichment`, `POST /objects/{id}/enrich` | Applicable connectors; run one (`{provider, force}`) |
+| `POST /import/csv?kind=&dryRun=&skipInvalid=`, `GET /import/csv/template?kind=` | CSV import (`{csv}`) and template |
+| `GET/POST /taxii/collections`, `PUT/DELETE /taxii/collections/{id}` | Published TAXII collections |
+| `POST /taxii/collections/{id}/tokens`, `DELETE /taxii/tokens/{id}` | Issue (secret shown once) and revoke partner tokens |
+| `GET/POST /taxii/feeds`, `PUT/DELETE /taxii/feeds/{id}`, `POST /taxii/feeds/{id}/pull` | Subscribed feeds |
+
+The TAXII 2.1 endpoints themselves are under `/api/taxii2/` (see
+[TAXII 2.1](#taxii-21)).
 
 Storage is the `cti_objects`, `cti_relationships` and `cti_changes` tables
-([`V29__Cti_knowledge_base.sql`](../../backend/src/main/resources/db/postgresql/V29__Cti_knowledge_base.sql)).
+([`V29__Cti_knowledge_base.sql`](../../backend/src/main/resources/db/postgresql/V29__Cti_knowledge_base.sql)),
+plus `cti_notes`, `cti_sightings`, `cti_taxii_collections`, `cti_taxii_tokens`
+and `cti_taxii_feeds`
+([`V30__Cti_inference_sightings_notes_taxii.sql`](../../backend/src/main/resources/db/postgresql/V30__Cti_inference_sightings_notes_taxii.sql)).
 The implementation is in
 [`backend/src/main/java/com/modulo/cti/`](../../backend/src/main/java/com/modulo/cti/)
 and [`frontend/src/features/cti/`](../../frontend/src/features/cti/).

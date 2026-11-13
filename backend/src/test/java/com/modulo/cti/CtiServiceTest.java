@@ -38,7 +38,7 @@ class CtiServiceTest {
     jdbc.update("INSERT INTO users(id,username) VALUES(1,'one'),(2,'two')");
     CtiTaxonomy taxonomy = new CtiTaxonomy();
     cti = new CtiService(jdbc, json, taxonomy, new CtiGraphProjection(Optional.empty()), new DataSourceTransactionManager(source));
-    exports = new CtiExportService(cti, taxonomy, json);
+    exports = new CtiExportService(cti, taxonomy, new CtiAttackLibrary(), json);
   }
 
   ObjectNode attrs(Object... pairs) {
@@ -140,7 +140,7 @@ class CtiServiceTest {
     var graph = cti.graph(1, b, 3, 100, false);
     Set<Object> nodes = new HashSet<>(((List<?>) graph.get("nodes")).stream().map(n -> ((Map<?, ?>) n).get("id")).toList());
     assertEquals(Set.of(b, a, actor, infra), nodes);
-    assertEquals(3, ((List<?>) graph.get("edges")).size());
+    assertEquals(4, ((List<?>) graph.get("edges")).size(), "three explicit edges plus the inferred 0xed123 attribution");
     var leadGraph = cti.graph(1, lead, 1, 100, true);
     assertEquals(3, ((List<?>) leadGraph.get("nodes")).size());
     var detail = cti.detail(1, lead);

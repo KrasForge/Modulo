@@ -24,7 +24,8 @@ Tools:
 - `update_para_task_status`: change one Life/PARA task to `Next`, `Waiting`, or `Done`. Read `get_workspace_record(namespace="para")` first, then pass the exact task ID and returned record version as `expected_version`. The tool rejects missing or duplicate IDs, schema changes, and concurrent edits; it preserves all other PARA data. A repeat request for the same status makes no write.
 - `create_note`: create a native note through Modulo's Notes API, with optional Markdown and tags.
 - `cti_search`, `cti_get`, `cti_summary`, `cti_changes`, `cti_graph`: read the CTI knowledge base of the Threat Intelligence pack. Search before deriving anything; defanged values match.
-- `cti_ingest`, `cti_link`: record findings through the idempotent CTI ingest. Re-sending a batch changes nothing, lists are unioned and TLP is never lowered. See [Threat intelligence](../../docs/features/threat-intelligence.md#feeding-the-graph-from-watches).
+- `cti_enrich`, `cti_add_sighting`, `cti_add_note`: run a one-click OSINT connector, record a sighting (drives indicator scores), or attach a note or opinion.
+- `cti_ingest`, `cti_link`: record findings through the idempotent CTI ingest (objects, relationships and sightings). Re-sending a batch changes nothing, lists are unioned and TLP is never lowered. See [Threat intelligence](../../docs/features/threat-intelligence.md#feeding-the-graph-from-watches).
 
 `cti_ingest.py` posts a CTI batch from a cron watch with the same environment: `python3 tools/modulo_mcp/cti_ingest.py findings.json` (or `-` for stdin).
 

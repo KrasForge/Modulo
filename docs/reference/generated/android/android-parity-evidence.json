@@ -2,7 +2,7 @@
   "generatedBy": "frontend/scripts/phoneParity.mjs",
   "note": "Phone-viewport (412x883, touch) sweep of every contributed view with the whole catalog installed against an in-memory plugin-state API. Device runs are recorded by the android-emulator CI job.",
   "summary": {
-    "views": 221,
+    "views": 223,
     "failed": 0,
     "recordViews": 33,
     "persisted": 9
@@ -291,11 +291,31 @@
       "overflow": []
     },
     {
+      "view": "cti-attack",
+      "plugin": "cti-dashboard",
+      "rendered": true,
+      "title": "ATT&CK",
+      "shown": "cti-attack",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
       "view": "cti-exchange",
       "plugin": "cti-dashboard",
       "rendered": true,
-      "title": "STIX / MISP",
+      "title": "STIX / MISP / CSV",
       "shown": "cti-exchange",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-taxii",
+      "plugin": "cti-dashboard",
+      "rendered": true,
+      "title": "TAXII",
+      "shown": "cti-taxii",
       "interactive": true,
       "errors": [],
       "overflow": []
@@ -1905,6 +1925,7 @@
       "create": "persisted",
       "control": "New search",
       "namespaces": [
+        "workspace-settings",
         "saved-searches"
       ]
     },

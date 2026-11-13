@@ -51,6 +51,8 @@ class StateHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/cti/ingest":
                 return self.respond(200, {"created": len(body.get("objects", [])), "updated": 0, "unchanged": 0,
                                           "relationshipsCreated": len(body.get("relationships", [])), "results": []})
+            if parsed.path.endswith("/enrich") or parsed.path.endswith("/sightings") or parsed.path.endswith("/notes"):
+                return self.respond(200, {"ok": True, "body": body})
             if parsed.path == "/api/cti/objects":
                 return self.respond(200, {"items": [], "total": 0, "page": 0, "limit": 25, "hasMore": False})
             return self.respond(404, {"code": "CTI_NOT_FOUND"})
@@ -118,6 +120,22 @@ class ModuloClientTests(unittest.TestCase):
             self.client.cti_get("00000000-0000-0000-0000-000000000000")
         with self.assertRaises(ModuloError):
             self.client.cti_get("../objects")
+
+    def test_cti_enrichment_sightings_and_notes(self):
+        object_id = "11111111-1111-1111-1111-111111111111"
+        self.client.cti_enrich(object_id, "crt.sh")
+        self.assertEqual(StateHandler.cti[-1][1], f"/api/cti/objects/{object_id}/enrich")
+        self.assertEqual(StateHandler.cti[-1][3], {"provider": "crt.sh", "force": False})
+        self.client.cti_add_sighting(object_id, "honeypot", 3, observed=["1.2.3.4"])
+        self.assertEqual(StateHandler.cti[-1][3], {"where": "honeypot", "count": 3, "observed": ["1.2.3.4"]})
+        self.client.cti_add_note(object_id, "Weak OPSEC", opinion="agree")
+        self.assertEqual(StateHandler.cti[-1][3], {"kind": "opinion", "body": "Weak OPSEC", "opinion": "agree"})
+        with self.assertRaises(ModuloError):
+            self.client.cti_enrich(object_id, "shodan")
+        with self.assertRaises(ModuloError):
+            self.client.cti_add_note(object_id, "x", opinion="maybe")
+        with self.assertRaises(ModuloError):
+            self.client.cti_add_sighting(object_id, count=0)
 
     def test_workspace_para_matches_ui_namespace(self):
         self.client.create_record("workspace-para", "data", "modulo.workspace.para", {"tasks": [{"title": "BROWSE-CAPTURE"}]})

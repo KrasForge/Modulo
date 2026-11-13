@@ -321,3 +321,35 @@ class ModuloClient:
             raise ModuloError("tlp must be clear, green, amber, amber+strict or red")
         params = {"tlp": tlp, "victims": "true" if include_victims else "false"}
         return self._request(f"/api/cti/export/stix?{urlencode(params)}")
+
+    def cti_enrich(self, object_id: str, provider: str, force: bool = False) -> dict[str, Any]:
+        """Run a server-side OSINT connector for a CTI record and log it to the enrichment log."""
+        if provider not in ("crt.sh", "urlscan", "passive-dns", "blockchain-explorer"):
+            raise ModuloError("provider must be crt.sh, urlscan, passive-dns or blockchain-explorer")
+        return self._request(f"/api/cti/objects/{self._segment(object_id, 'object ID')}/enrich", "POST",
+                             {"provider": provider, "force": bool(force)})
+
+    def cti_add_sighting(self, object_id: str, where: str = "", count: int = 1, first_seen: str | None = None,
+                         last_seen: str | None = None, observed: list[str] | None = None) -> dict[str, Any]:
+        """Record when and where a CTI record was seen; idempotent for an identical report."""
+        if type(count) is not int or count < 1:
+            raise ModuloError("count must be a positive integer")
+        body: dict[str, Any] = {"where": where, "count": count}
+        if first_seen:
+            body["firstSeen"] = first_seen
+        if last_seen:
+            body["lastSeen"] = last_seen
+        if observed:
+            body["observed"] = observed
+        return self._request(f"/api/cti/objects/{self._segment(object_id, 'object ID')}/sightings", "POST", body)
+
+    def cti_add_note(self, object_id: str, body: str, opinion: str | None = None, tlp: str | None = None) -> dict[str, Any]:
+        """Attach an analyst note, or an opinion when `opinion` is given, to a CTI record."""
+        if opinion is not None and opinion not in ("strongly-disagree", "disagree", "neutral", "agree", "strongly-agree"):
+            raise ModuloError("opinion must be strongly-disagree, disagree, neutral, agree or strongly-agree")
+        payload: dict[str, Any] = {"kind": "opinion" if opinion else "note", "body": body}
+        if opinion:
+            payload["opinion"] = opinion
+        if tlp:
+            payload["tlp"] = tlp
+        return self._request(f"/api/cti/objects/{self._segment(object_id, 'object ID')}/notes", "POST", payload)

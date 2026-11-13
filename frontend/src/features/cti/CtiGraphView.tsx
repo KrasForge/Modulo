@@ -83,7 +83,8 @@ export function CtiGraphView({ navigateView }: WorkspaceViewProps) {
                 const highlighted = selected && (edge.sourceId === selected.id || edge.targetId === selected.id);
                 return (
                   <g key={edge.id}>
-                    <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="hsl(var(--muted-foreground))" strokeOpacity={highlighted ? 0.9 : 0.35} strokeWidth={highlighted ? 2 : 1} markerEnd="url(#cti-arrow)" />
+                    <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="hsl(var(--muted-foreground))" strokeOpacity={highlighted ? 0.9 : 0.35} strokeWidth={highlighted ? 2 : 1}
+                      strokeDasharray={edge.inferredBy ? '5 4' : undefined} markerEnd="url(#cti-arrow)"><title>{edge.inferredBy ? `${edge.type} (inferred: ${edge.inferredBy})` : edge.type}</title></line>
                     {highlighted && <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 4} textAnchor="middle" className="fill-muted-foreground font-mono text-[11px]">{edge.type}</text>}
                   </g>
                 );
@@ -121,13 +122,14 @@ export function CtiGraphView({ navigateView }: WorkspaceViewProps) {
                 <ul className="mt-3 space-y-1 text-[13px]">
                   {graph.edges.filter(edge => edge.sourceId === selected.id || edge.targetId === selected.id).map(edge => {
                     const other = graph.nodes.find(node => node.id === (edge.sourceId === selected.id ? edge.targetId : edge.sourceId));
-                    return other && <li key={edge.id}><span className="font-mono text-xs text-muted-foreground">{edge.sourceId === selected.id ? edge.type : `← ${edge.type}`}</span> <button type="button" className="underline" onClick={() => setSelected(other)}>{other.name}</button></li>;
+                    return other && <li key={edge.id}><span className="font-mono text-xs text-muted-foreground">{edge.sourceId === selected.id ? edge.type : `← ${edge.type}`}{edge.inferredBy ? ' (inferred)' : ''}</span> <button type="button" className="underline" onClick={() => setSelected(other)}>{other.name}</button></li>;
                   })}
                 </ul>
               </Panel>
             ) : <Panel title="Select a node"><p className="text-[13px] text-muted-foreground">Click a node to inspect it; double-click to focus the graph on it.</p></Panel>}
             <Panel title="Legend">
               <ul className="space-y-1 text-[13px]">
+                <li className="flex items-center gap-2 text-muted-foreground"><svg width="24" height="6" aria-hidden="true"><line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeDasharray="5 4" /></svg>Inferred relationship</li>
                 {kindsShown.map(kind => { const Icon = KIND_ICONS[kind]; return <li key={kind} className="flex items-center gap-2"><span className="inline-block size-3 rounded-full" style={{ background: KIND_COLORS[kind] }} /><Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />{TAXONOMY.kinds[kind].title}</li>; })}
               </ul>
             </Panel>

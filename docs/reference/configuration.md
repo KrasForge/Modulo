@@ -213,8 +213,11 @@ See [Plugins](../features/plugins.md).
 | `blockchain.contract.note-registry-address` etc. | | Hardhat default addresses | Also `modulo-token-address`, `note-monetization-address`. |
 | `blockchain.private-key` | `BLOCKCHAIN_PRIVATE_KEY` | Hardhat account 0 | Replace for any real network. |
 | `blockchain.gas.price` / `gas.limit` | | `20000000000` / `3000000` | |
-| `modulo.remote.credential-key` | `MODULO_REMOTE_CREDENTIAL_KEY` | empty | Base64 32-byte AES key for server-held service credentials (feeds, CalDAV, ntfy, metadata). Empty: credential endpoints answer 503. |
+| `modulo.remote.credential-key` | `MODULO_REMOTE_CREDENTIAL_KEY` | empty | Base64 32-byte AES key for server-held service credentials (feeds, CalDAV, ntfy, metadata, the urlscan.io key, CTI TAXII feed passwords). Empty: credential endpoints answer 503. |
 | `modulo.remote.allow-private-networks` | `MODULO_REMOTE_ALLOW_PRIVATE_NETWORKS` | `false` | Let server-side fetchers reach private addresses. Any signed-in user can then make the server call internal hosts. |
+| `modulo.cti.taxii.public-url` | `MODULO_CTI_TAXII_PUBLIC_URL` | empty | Public origin advertised in TAXII discovery (for example `https://modulo.example`). Empty: derived from the request. |
+| `modulo.cti.taxii.poll-check-ms` | `MODULO_CTI_TAXII_POLL_CHECK_MS` | `300000` | How often the server checks for TAXII feeds whose poll interval has elapsed. |
+| `modulo.cti.taxii.poll-initial-ms` | `MODULO_CTI_TAXII_POLL_INITIAL_MS` | `120000` | Delay before the first TAXII feed check after startup. |
 | `modulo.praxis.enabled` | `MODULO_PRAXIS_ENABLED` | `false` | Praxis control-plane client (mutual TLS plus bearer token). |
 | `modulo.praxis.base-url` | `MODULO_PRAXIS_URL` | empty | |
 | `modulo.praxis.ca-file` | `MODULO_PRAXIS_CA_FILE` | empty | Internal CA. |

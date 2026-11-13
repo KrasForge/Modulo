@@ -29,6 +29,8 @@ import {
   ctiApi,
   defang,
   relativeAge,
+  scoreTone,
+  INFERENCE_RULES,
   targetKinds,
   outgoingTypes,
   type AttributeSpec,
@@ -40,6 +42,8 @@ import {
   type Tlp,
 } from './ctiApi';
 import { KIND_ICONS, attributeSummary, kindView } from './kinds';
+import { searchTechniques, techniqueName, techniqueUrl } from './attack';
+import { ConnectorsPanel, HistoryPanel, NotesPanel, SightingsPanel } from './CtiDetailPanels';
 
 export interface CtiDetailExtraProps { object: CtiDetail; reload: () => Promise<void> }
 
@@ -142,7 +146,7 @@ export function CtiObjectsView({ kind, extraPanel, ...props }: CtiObjectsViewPro
                   <ListRow key={item.id} title={item.name} detail={attributeSummary(kind, item.attributes) || item.naturalKey}
                     onOpen={() => { setCreating(false); setSelected(item.id); }}
                     className={cn(selected === item.id && 'bg-muted/30')}
-                    meta={<><TlpBadge tlp={item.tlp} /><Badge variant="outline">{item.status}</Badge>{item.degree ? <span title="Relationships">{item.degree} links</span> : null}<span>{relativeAge(item.updatedAt)}</span></>} />
+                    meta={<><TlpBadge tlp={item.tlp} />{item.kind === 'indicator' && item.score !== undefined && item.score !== null && <Badge className={cn('font-mono', scoreTone(item.score))} title="Indicator score">{item.score}</Badge>}<Badge variant="outline">{item.status}</Badge>{item.degree ? <span title="Relationships">{item.degree} links</span> : null}<span>{relativeAge(item.updatedAt)}</span></>} />
                 ))}
               </ListRows>
               {items.length < total && (
@@ -171,6 +175,13 @@ export function CtiObjectsView({ kind, extraPanel, ...props }: CtiObjectsViewPro
 
 function formatValue(spec: AttributeSpec, value: unknown): ReactNode {
   if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value) && spec.format === 'attack-technique') {
+    return value.length ? <span className="flex flex-wrap gap-1">{value.map(item => (
+      <a key={String(item)} href={techniqueUrl(String(item))} target="_blank" rel="noreferrer noopener" title="Open in MITRE ATT&CK">
+        <Badge variant="secondary"><span className="font-mono">{String(item)}</span>{techniqueName(String(item)) ? <span className="ml-1">{techniqueName(String(item))}</span> : <span className="ml-1 text-warning">not in ATT&CK library</span>}</Badge>
+      </a>
+    ))}</span> : undefined;
+  }
   if (Array.isArray(value)) return value.length ? <span className="flex flex-wrap gap-1">{value.map(item => <Badge key={String(item)} variant="secondary" className="font-mono">{String(item)}</Badge>)}</span> : undefined;
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (spec.type === 'datetime') return `${new Date(String(value)).toLocaleString()} (${relativeAge(String(value))})`;
@@ -209,7 +220,7 @@ function ObjectDetail({ id, kind, extraPanel: Extra, onClose, onChanged, onDelet
   return (
     <div className="space-y-4">
       <Panel title={<span className="flex min-w-0 items-center gap-2"><Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Back to list" onClick={onClose}><ArrowLeft /></Button><span className="truncate">{object.name}</span></span>}
-        description={<span className="flex flex-wrap items-center gap-1.5"><TlpBadge tlp={object.tlp} /><Badge variant="outline">{object.status}</Badge>{object.confidence !== null && <Badge variant="secondary">confidence {object.confidence}</Badge>}{object.labels.map(label => <Badge key={label} variant="secondary">#{label}</Badge>)}</span>}
+        description={<span className="flex flex-wrap items-center gap-1.5"><TlpBadge tlp={object.tlp} /><Badge variant="outline">{object.status}</Badge>{object.confidence !== null && <Badge variant="secondary">confidence {object.confidence}</Badge>}{object.kind === 'indicator' && object.score !== undefined && object.score !== null && <Badge className={cn('font-mono', scoreTone(object.score))} title={`Decaying score; half-life ${object.halfLifeDays} days`}>score {object.score}</Badge>}{object.labels.map(label => <Badge key={label} variant="secondary">#{label}</Badge>)}</span>}
         actions={<>
           {spec.group === 'knowledge' || object.relationships.length ? <Button variant="ghost" size="icon-sm" aria-label="Open in graph" title="Open in graph" onClick={() => navigateView(`cti-graph?focus=${encodeURIComponent(object.id)}`)}><Network /></Button> : null}
           <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => setEditing(true)}><Pencil /></Button>
@@ -241,9 +252,9 @@ function ObjectDetail({ id, kind, extraPanel: Extra, onClose, onChanged, onDelet
                 <ListRows>
                   {rels.map(rel => (
                     <ListRow key={rel.id} title={rel.other.name} leading={(() => { const KindIcon = KIND_ICONS[rel.other.kind]; return <KindIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />; })()}
-                      detail={[TAXONOMY.kinds[rel.other.kind].singular, rel.description, rel.confidence !== null ? `confidence ${rel.confidence}` : ''].filter(Boolean).join(' · ')}
-                      onOpen={() => open(rel.other)} meta={<TlpBadge tlp={rel.tlp} />}
-                      actions={<Button variant="ghost" size="icon-sm" aria-label={`Remove ${rel.type} ${rel.other.name}`} onClick={() => void action.run(async () => { await ctiApi.unlink(rel.id); await reload(); })}><Unlink /></Button>} />
+                      detail={[TAXONOMY.kinds[rel.other.kind].singular, rel.inferredBy ? INFERENCE_RULES[rel.inferredBy] ?? `Inferred (${rel.inferredBy})` : rel.description, rel.confidence !== null ? `confidence ${rel.confidence}` : ''].filter(Boolean).join(' · ')}
+                      onOpen={() => open(rel.other)} meta={<>{rel.inferredBy && <Badge variant="outline" title={INFERENCE_RULES[rel.inferredBy]}>inferred</Badge>}<TlpBadge tlp={rel.tlp} /></>}
+                      actions={rel.inferredBy ? undefined : <Button variant="ghost" size="icon-sm" aria-label={`Remove ${rel.type} ${rel.other.name}`} onClick={() => void action.run(async () => { await ctiApi.unlink(rel.id); await reload(); })}><Unlink /></Button>} />
                   ))}
                 </ListRows>
               </div>
@@ -253,24 +264,13 @@ function ObjectDetail({ id, kind, extraPanel: Extra, onClose, onChanged, onDelet
         <LinkForm object={object} onLinked={reload} />
       </Panel>
 
+      <SightingsPanel object={object} reload={reload} />
+      {spec.group === 'knowledge' && <ConnectorsPanel object={object} reload={reload} />}
       {spec.group === 'knowledge' && <EnrichmentForm object={object} onLogged={reload} />}
+      <NotesPanel object={object} reload={reload} />
       <MergePanel object={object} onMerged={async target => { await onChanged(); open({ id: target, kind: object.kind }); }} />
 
-      <Panel title="History" description="Append-only change journal for this record.">
-        {object.history.length === 0 ? <p className="text-[13px] text-muted-foreground">No history.</p> : (
-          <ol className="space-y-1 text-[13px]">
-            {object.history.map(change => (
-              <li key={change.seq} className="flex flex-wrap gap-x-2">
-                <span className="text-muted-foreground">{new Date(change.at).toLocaleString()}</span>
-                <span className="font-medium">{change.action}</span>
-                {Array.isArray(change.detail.fields) && <span className="text-muted-foreground">{(change.detail.fields as string[]).join(', ')}</span>}
-                {typeof change.detail.type === 'string' && <span className="text-muted-foreground">{change.detail.type} → {String(change.detail.targetName ?? change.detail.targetId)}</span>}
-                <span className="text-muted-foreground">via {change.source}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Panel>
+      <HistoryPanel history={object.history} />
     </div>
   );
 }
@@ -467,7 +467,8 @@ function AttributeInput({ name, spec, value, onChange }: { name: string; spec: A
     case 'boolean':
       return <Field label={label}><Checkbox aria-label={spec.label} checked={value === true} onCheckedChange={checked => onChange(checked === true)} /></Field>;
     case 'list':
-      return <Field label={label} hint={spec.format === 'attack-technique' ? 'ATT&CK IDs, e.g. T1059.007' : 'Comma or newline separated'} className="sm:col-span-2">
+      if (spec.format === 'attack-technique') return <TechniqueInput label={label} value={value} onChange={onChange} />;
+      return <Field label={label} hint="Comma or newline separated" className="sm:col-span-2">
         <Textarea rows={2} value={Array.isArray(value) ? value.join(', ') : value === undefined ? '' : String(value)} onChange={event => onChange(event.target.value)} />
       </Field>;
     case 'date':
@@ -483,3 +484,34 @@ function AttributeInput({ name, spec, value, onChange }: { name: string; spec: A
   }
 }
 
+/** ATT&CK technique list with a name search over the bundled MITRE library. */
+function TechniqueInput({ label, value, onChange }: { label: string; value: unknown; onChange: (value: unknown) => void }) {
+  const [query, setQuery] = useState('');
+  const ids = (Array.isArray(value) ? value.map(String) : String(value ?? '').split(/[,\n]/)).map(item => item.trim().toUpperCase()).filter(Boolean);
+  const matches = searchTechniques(query, 8).filter(entry => !ids.includes(entry.id));
+  return (
+    <Field label={label} hint="Search by ID or name; unknown IDs are kept but flagged." className="sm:col-span-2">
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {ids.map(id => (
+            <Badge key={id} variant="secondary" className="gap-1">
+              <span className="font-mono">{id}</span>{techniqueName(id) ?? <span className="text-warning">unknown</span>}
+              <button type="button" aria-label={`Remove ${id}`} className="ml-1" onClick={() => onChange(ids.filter(item => item !== id))}>×</button>
+            </Badge>
+          ))}
+        </div>
+        <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="T1059, JavaScript, phishing…" aria-label="Search ATT&CK techniques"
+          onKeyDown={event => { if (event.key === 'Enter' && /^T\d{4}(\.\d{3})?$/i.test(query.trim())) { event.preventDefault(); onChange([...ids, query.trim().toUpperCase()]); setQuery(''); } }} />
+        {matches.length > 0 && (
+          <ul className="max-h-48 overflow-y-auto rounded-md border border-border text-[13px]">
+            {matches.map(entry => (
+              <li key={entry.id}><button type="button" className="w-full px-2 py-1 text-left hover:bg-muted/30" onClick={() => { onChange([...ids, entry.id]); setQuery(''); }}>
+                <span className="font-mono">{entry.id}</span> {techniqueName(entry.id)}
+              </button></li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Field>
+  );
+}

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, BookOpenCheck, LayoutDashboard, Network, RefreshCw } from 'lucide-react';
+import { Activity, BookOpenCheck, Eye, Grid3x3, LayoutDashboard, Network, RefreshCw, Share2, Sparkles } from 'lucide-react';
 import { Badge, Button, cn } from '@/ui';
 import { EmptyPanel, FilterChips, ListRow, ListRows, Metric, MetricRow, Panel, ViewShell } from '../workspace/viewkit';
 import type { WorkspaceViewProps } from '../workspace/plugins/types';
-import { SAVED_VIEWS, TAXONOMY, ctiApi, relativeAge, type CtiChange, type CtiKind, type SavedView, type Summary } from './ctiApi';
+import { SAVED_VIEWS, TAXONOMY, ctiApi, describeChanges, relativeAge, type CtiChange, type CtiKind, type SavedView, type Summary } from './ctiApi';
 import { KIND_ICONS, attributeSummary, kindView } from './kinds';
 import { CTI_RUNBOOKS } from './runbooks';
 
@@ -13,7 +13,7 @@ const WINDOWS = [
   { value: '30', label: '30 days' },
 ] as const;
 
-const PANELS: SavedView[] = ['live-c2', 'open-leads', 'unattributed-identities', 'stale-leads', 'unhealthy-watches', 'expiring-indicators', 'unnotified-victims'];
+const PANELS: SavedView[] = ['live-c2', 'open-leads', 'unattributed-identities', 'stale-leads', 'unhealthy-watches', 'expiring-indicators', 'decayed-indicators', 'unnotified-victims'];
 const KNOWLEDGE: CtiKind[] = ['actor', 'identity', 'infrastructure', 'malware', 'indicator', 'campaign', 'victim'];
 
 /** CTI overview: counts, the saved analyst queues and the "What changed?" briefing. */
@@ -51,6 +51,16 @@ export function CtiDashboardView({ data, navigateView }: WorkspaceViewProps) {
     finally { setBusy(false); }
   };
 
+  const reinfer = async () => {
+    setBusy(true); setNotice(undefined); setError(undefined);
+    try {
+      const result = await ctiApi.reinfer();
+      setNotice(`Inference: ${result.added} relationships added, ${result.retracted} retracted.`);
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setBusy(false); }
+  };
+
   const view = (id: SavedView) => summary?.views[id];
   const total = (id: SavedView) => view(id)?.total ?? 0;
 
@@ -58,6 +68,8 @@ export function CtiDashboardView({ data, navigateView }: WorkspaceViewProps) {
     <ViewShell title="CTI Dashboard" icon={LayoutDashboard} subtitle="Threat-intelligence workbench: live C2, open leads, unattributed identities and what changed."
       actions={<>
         <Button variant="outline" onClick={() => navigateView('cti-graph')}><Network /> Graph</Button>
+        <Button variant="outline" onClick={() => navigateView('cti-attack')}><Grid3x3 /> ATT&CK</Button>
+        <Button variant="outline" onClick={() => navigateView('cti-taxii')}><Share2 /> TAXII</Button>
         <Button variant="ghost" size="icon" aria-label="Refresh" disabled={busy} onClick={() => void load()}><RefreshCw /></Button>
       </>}>
       {(error || notice) && <p role={error ? 'alert' : 'status'} className={cn('mb-4 rounded-md border px-3 py-2 text-[13px]', error ? 'border-destructive/40 text-destructive' : 'border-border text-muted-foreground')}>{error ?? notice}</p>}
@@ -73,7 +85,8 @@ export function CtiDashboardView({ data, navigateView }: WorkspaceViewProps) {
           </MetricRow>
           <MetricRow>
             {KNOWLEDGE.map(kind => <Metric key={kind} label={TAXONOMY.kinds[kind].title} value={summary.counts[kind] ?? 0} icon={KIND_ICONS[kind]} onOpen={() => open(kind)} />)}
-            <Metric label="Relationships" value={summary.relationships} icon={Network} detail={summary.graphProjection === 'neo4j' ? 'Neo4j projection on' : 'Postgres graph'} onOpen={() => navigateView('cti-graph')} />
+            <Metric label="Relationships" value={summary.relationships} icon={Network} detail={`${summary.inferredRelationships} inferred · ${summary.graphProjection === 'neo4j' ? 'Neo4j projection on' : 'Postgres graph'}`} onOpen={() => navigateView('cti-graph')} />
+            <Metric label="Sightings (30 days)" value={summary.sightingsLast30Days} icon={Eye} detail={`${total('decayed-indicators')} decayed indicators`} tone={total('decayed-indicators') ? 'warning' : 'default'} onOpen={() => open('indicator')} />
           </MetricRow>
 
           <div className="grid gap-4 xl:grid-cols-2">
@@ -86,7 +99,7 @@ export function CtiDashboardView({ data, navigateView }: WorkspaceViewProps) {
                     const Icon = KIND_ICONS[change.kind];
                     return <ListRow key={change.seq} leading={<Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />}
                       title={`${change.action} · ${change.name}`}
-                      detail={[TAXONOMY.kinds[change.kind]?.singular, typeof change.detail.type === 'string' ? `${change.detail.type} → ${String(change.detail.targetName ?? '')}` : '', Array.isArray(change.detail.fields) ? (change.detail.fields as string[]).join(', ') : '', `via ${change.source}`].filter(Boolean).join(' · ')}
+                      detail={[TAXONOMY.kinds[change.kind]?.singular, typeof change.detail.type === 'string' ? `${change.detail.type} → ${String(change.detail.targetName ?? '')}` : '', describeChanges(change.detail).join('; '), `via ${change.source}`].filter(Boolean).join(' · ')}
                       meta={relativeAge(change.at)} onOpen={change.action === 'deleted' ? undefined : () => open(change.kind, change.objectId)} />;
                   })}
                 </ListRows>
@@ -112,7 +125,8 @@ export function CtiDashboardView({ data, navigateView }: WorkspaceViewProps) {
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={() => void installRunbooks()}>Create runbook notes</Button>
                 <Button size="sm" variant="outline" onClick={() => navigateView('executable-runbooks')}>Open Executable Runbooks</Button>
-                <Button size="sm" variant="outline" onClick={() => navigateView('cti-exchange')}>STIX / MISP exchange</Button>
+                <Button size="sm" variant="outline" onClick={() => navigateView('cti-exchange')}>STIX / MISP / CSV exchange</Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void reinfer()}><Sparkles /> Re-run inference</Button>
               </div>
             </Panel>
           </div>

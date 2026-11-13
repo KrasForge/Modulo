@@ -50,7 +50,17 @@ public class SafeHttpFetcher implements AutoCloseable {
   private static final Set<Integer> PORTS = Set.of(80, 443, 8080, 8443);
   private static final int TIMEOUT_MS = 10_000;
 
-  public record Response(int status, String contentType, byte[] body, URI finalUri) {
+  public record Response(int status, String contentType, byte[] body, URI finalUri, Map<String, String> headers) {
+    public Response(int status, String contentType, byte[] body, URI finalUri) {
+      this(status, contentType, body, finalUri, Map.of());
+    }
+
+    /** First value of a response header, case-insensitive. */
+    public String header(String name) {
+      for (var entry : headers.entrySet()) if (entry.getKey().equalsIgnoreCase(name)) return entry.getValue();
+      return null;
+    }
+
     public String text() {
       Charset charset = StandardCharsets.UTF_8;
       try {
@@ -68,6 +78,11 @@ public class SafeHttpFetcher implements AutoCloseable {
 
   public SafeHttpFetcher() {
     this(false);
+  }
+
+  /** A fetcher honouring the administrator's {@code modulo.remote.allow-private-networks} choice. */
+  public static SafeHttpFetcher create(boolean allowPrivateNetworks) {
+    return new SafeHttpFetcher(allowPrivateNetworks);
   }
 
   /** {@code allowPrivateNetworks} exists for tests against a local stub server only. */
@@ -185,7 +200,10 @@ public class SafeHttpFetcher implements AutoCloseable {
       Header type = response.getFirstHeader("Content-Type");
       java.util.List<URI> redirects = context.getRedirectLocations();
       URI finalUri = redirects == null || redirects.isEmpty() ? request.getURI() : redirects.get(redirects.size() - 1);
-      return new Response(response.getStatusLine().getStatusCode(), type == null ? null : type.getValue(), body, finalUri);
+      Map<String, String> responseHeaders = new java.util.LinkedHashMap<>();
+      for (Header header : response.getAllHeaders()) responseHeaders.putIfAbsent(header.getName(), header.getValue());
+      return new Response(response.getStatusLine().getStatusCode(), type == null ? null : type.getValue(), body, finalUri,
+          java.util.Collections.unmodifiableMap(responseHeaders));
     } catch (UnknownHostException refused) {
       throw error(HttpStatus.BAD_REQUEST, refused.getMessage() != null && refused.getMessage().startsWith("Refusing")
           ? "URL_ADDRESS_NOT_ALLOWED" : "REMOTE_HOST_UNKNOWN");
