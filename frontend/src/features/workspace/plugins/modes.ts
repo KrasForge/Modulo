@@ -73,6 +73,7 @@ export const HUB_SECTIONS: Record<string, readonly ModeSection[]> = {
   ],
   work: [
     { id: 'audit', label: 'Smart Contract Auditing' },
+    { id: 'cti', label: 'Threat Intelligence' },
     { id: 'business', label: 'Business Admin' },
     { id: 'career', label: 'Career' },
   ],

@@ -255,3 +255,69 @@ class ModuloClient:
         if not isinstance(result, dict) or not isinstance(result.get("id"), int):
             raise ModuloError("Note creation was not confirmed by the backend")
         return result
+
+    # ── CTI knowledge base (/api/cti) ────────────────────────────────────────
+    CTI_KINDS = ("actor", "identity", "infrastructure", "malware", "indicator", "campaign", "victim",
+                 "lead", "watch", "enrichment", "disclosure")
+    CTI_VIEWS = ("live-c2", "open-leads", "stale-leads", "unattributed-identities", "expiring-indicators",
+                 "unhealthy-watches", "unnotified-victims")
+
+    def cti_search(self, query: str | None = None, kind: str | None = None, view: str | None = None,
+                   limit: int = 25) -> dict[str, Any]:
+        """Search CTI records by name, dedupe key, attribute values or description (defanged input works)."""
+        if kind is not None and kind not in self.CTI_KINDS:
+            raise ModuloError(f"kind must be one of {', '.join(self.CTI_KINDS)}")
+        if view is not None and view not in self.CTI_VIEWS:
+            raise ModuloError(f"view must be one of {', '.join(self.CTI_VIEWS)}")
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ModuloError("limit must be between 1 and 200")
+        params = {key: value for key, value in (("q", query), ("kind", kind), ("view", view)) if value}
+        params["limit"] = str(limit)
+        return self._request(f"/api/cti/objects?{urlencode(params)}")
+
+    def cti_get(self, object_id: str) -> dict[str, Any]:
+        """One CTI record with every relationship and its change history."""
+        return self._request(f"/api/cti/objects/{self._segment(object_id, 'object ID')}")
+
+    def cti_ingest(self, batch: dict[str, Any]) -> dict[str, Any]:
+        """Idempotent batch upsert of CTI objects, relationships and an optional watch run."""
+        if not isinstance(batch, dict) or not any(batch.get(key) for key in ("objects", "relationships", "watch")):
+            raise ModuloError("A batch needs objects, relationships or a watch run")
+        return self._request("/api/cti/ingest", "POST", batch)
+
+    def cti_link(self, source_id: str, target_id: str, relationship_type: str,
+                 confidence: int | None = None, description: str | None = None) -> dict[str, Any]:
+        """Create (or refresh) one typed relationship between two existing CTI records."""
+        body: dict[str, Any] = {"sourceId": source_id, "targetId": target_id, "type": relationship_type}
+        if confidence is not None:
+            body["confidence"] = confidence
+        if description:
+            body["description"] = description
+        return self._request("/api/cti/relationships", "POST", body)
+
+    def cti_changes(self, since: str | None = None, limit: int = 100) -> dict[str, Any]:
+        """The CTI change journal since an ISO-8601 time — the "what changed?" briefing."""
+        params = {"limit": str(limit)}
+        if since:
+            params["since"] = since
+        return self._request(f"/api/cti/changes?{urlencode(params)}")
+
+    def cti_summary(self) -> dict[str, Any]:
+        """Counts, saved analyst queues (live C2, open/stale leads, unattributed identities…) and recent changes."""
+        return self._request("/api/cti/summary")
+
+    def cti_graph(self, focus: str | None = None, depth: int = 2) -> dict[str, Any]:
+        """A record's typed neighbourhood (or the recent overview) as nodes and edges."""
+        if type(depth) is not int or not 1 <= depth <= 3:
+            raise ModuloError("depth must be 1, 2 or 3")
+        params = {"depth": str(depth)}
+        if focus:
+            params["focus"] = focus
+        return self._request(f"/api/cti/graph?{urlencode(params)}")
+
+    def cti_export_stix(self, tlp: str = "green", include_victims: bool = False) -> dict[str, Any]:
+        """A STIX 2.1 bundle of everything at or below the TLP ceiling."""
+        if tlp not in ("clear", "green", "amber", "amber+strict", "red"):
+            raise ModuloError("tlp must be clear, green, amber, amber+strict or red")
+        params = {"tlp": tlp, "victims": "true" if include_victims else "false"}
+        return self._request(f"/api/cti/export/stix?{urlencode(params)}")

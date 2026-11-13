@@ -34,6 +34,7 @@ the page is the bug: fix it in the same change.
 | [Workflows and approvals](features/workflows-and-approvals.md) | Workflow runs, Execution Center, human approvals, signing, evidence bundles |
 | [Plugins](features/plugins.md) | Plugin model, development, external plugins, marketplace, Trust Center |
 | [Packs](features/packs.md) | Pack manifest, install lifecycle, Pack Studio |
+| [Threat intelligence](features/threat-intelligence.md) | CTI pack: STIX-aligned knowledge graph, ingest API for watches, STIX/MISP exchange, disclosure capsules |
 | [Integrations](features/integrations.md) | Noesis, Praxis, Gmail, blockchain/IPFS, Azure Blob, gRPC |
 | [Mobile and desktop](features/mobile-and-desktop.md) | Android app, Electron desktop shell |
 

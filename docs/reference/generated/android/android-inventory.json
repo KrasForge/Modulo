@@ -2,19 +2,19 @@
   "generatedBy": "frontend/scripts/inventoryAndroid.ts",
   "note": "Native and backend dependencies come from a static scan of each plugin module and two levels of its local imports.",
   "totals": {
-    "catalog": 219,
-    "runnable": 219,
+    "catalog": 231,
+    "runnable": 231,
     "contributions": {
-      "views": 207,
+      "views": 221,
       "notePanels": 16,
       "noteFences": 8,
       "editorActions": 13,
       "blueprintNodes": 14
     },
     "androidIssues": {
-      "P13": 167,
+      "P13": 178,
       "P14": 9,
-      "P15": 20,
+      "P15": 21,
       "P16": 0,
       "P17": 23
     },
@@ -948,6 +948,384 @@
       "issues": {
         "storage": "P07",
         "android": "P17"
+      }
+    },
+    {
+      "id": "cti-actors",
+      "name": "CTI Threat Actors",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-actors"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-campaigns",
+      "name": "CTI Campaigns & Clusters",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [
+        "cti-actors"
+      ],
+      "contributions": {
+        "views": [
+          "cti-campaigns"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-dashboard",
+      "name": "CTI Dashboard, Graph & Exchange",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [
+        "cti-actors",
+        "cti-identities",
+        "cti-infrastructure",
+        "cti-malware",
+        "cti-indicators",
+        "cti-campaigns",
+        "cti-victims",
+        "cti-leads",
+        "cti-watches",
+        "cti-enrichment",
+        "cti-disclosures"
+      ],
+      "contributions": {
+        "views": [
+          "cti-dashboard",
+          "cti-graph",
+          "cti-exchange"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiDashboardPlugin.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [
+        "files.pick",
+        "files.save"
+      ],
+      "nativeDependencies": [
+        "file-download",
+        "file-picker"
+      ],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P15"
+      }
+    },
+    {
+      "id": "cti-disclosures",
+      "name": "CTI Disclosures",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-disclosures"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiDisclosuresPlugin.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [
+        "files.save"
+      ],
+      "nativeDependencies": [
+        "file-download"
+      ],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-enrichment",
+      "name": "CTI Enrichment Log",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-enrichment"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-identities",
+      "name": "CTI Identities & Aliases",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [
+        "cti-actors"
+      ],
+      "contributions": {
+        "views": [
+          "cti-identities"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-indicators",
+      "name": "CTI Indicators",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-indicators"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-infrastructure",
+      "name": "CTI Infrastructure",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-infrastructure"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-leads",
+      "name": "CTI Leads",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-leads"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-malware",
+      "name": "CTI Malware & Tooling",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [
+        "evidence-library"
+      ],
+      "contributions": {
+        "views": [
+          "cti-malware"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-victims",
+      "name": "CTI Victims & Exposure",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-victims"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
+      }
+    },
+    {
+      "id": "cti-watches",
+      "name": "CTI Watches",
+      "category": "security",
+      "builtin": false,
+      "runnable": true,
+      "dependencies": [],
+      "contributions": {
+        "views": [
+          "cti-watches"
+        ],
+        "notePanels": [],
+        "noteFences": [],
+        "editorActions": [],
+        "blueprintNodes": []
+      },
+      "module": "frontend/src/features/workspace/plugins/builtins/ctiObjectPlugins.tsx",
+      "storage": [],
+      "schemas": [],
+      "capabilities": [],
+      "nativeDependencies": [],
+      "backendEndpoints": [
+        "/api/cti"
+      ],
+      "issues": {
+        "storage": "P07",
+        "android": "P13"
       }
     },
     {

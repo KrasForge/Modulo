@@ -2,7 +2,7 @@
   "generatedBy": "frontend/scripts/phoneParity.mjs",
   "note": "Phone-viewport (412x883, touch) sweep of every contributed view with the whole catalog installed against an in-memory plugin-state API. Device runs are recorded by the android-emulator CI job.",
   "summary": {
-    "views": 207,
+    "views": 221,
     "failed": 0,
     "recordViews": 33,
     "persisted": 9
@@ -12,7 +12,7 @@
       "view": "audit-core-browser",
       "plugin": "audit-core-browser",
       "rendered": true,
-      "title": "Dashboard",
+      "title": "Core Browser",
       "shown": "audit-core-browser",
       "interactive": true,
       "errors": [],
@@ -246,6 +246,146 @@
       "rendered": true,
       "title": "Citation Manager",
       "shown": "citation-manager",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-actors",
+      "plugin": "cti-actors",
+      "rendered": true,
+      "title": "Actors",
+      "shown": "cti-actors",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-campaigns",
+      "plugin": "cti-campaigns",
+      "rendered": true,
+      "title": "Campaigns",
+      "shown": "cti-campaigns",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-dashboard",
+      "plugin": "cti-dashboard",
+      "rendered": true,
+      "title": "Dashboard",
+      "shown": "cti-dashboard",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-graph",
+      "plugin": "cti-dashboard",
+      "rendered": true,
+      "title": "Graph",
+      "shown": "cti-graph",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-exchange",
+      "plugin": "cti-dashboard",
+      "rendered": true,
+      "title": "STIX / MISP",
+      "shown": "cti-exchange",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-disclosures",
+      "plugin": "cti-disclosures",
+      "rendered": true,
+      "title": "Disclosures",
+      "shown": "cti-disclosures",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-enrichment",
+      "plugin": "cti-enrichment",
+      "rendered": true,
+      "title": "Enrichment",
+      "shown": "cti-enrichment",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-identities",
+      "plugin": "cti-identities",
+      "rendered": true,
+      "title": "Identities",
+      "shown": "cti-identities",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-indicators",
+      "plugin": "cti-indicators",
+      "rendered": true,
+      "title": "Indicators",
+      "shown": "cti-indicators",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-infrastructure",
+      "plugin": "cti-infrastructure",
+      "rendered": true,
+      "title": "Infrastructure",
+      "shown": "cti-infrastructure",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-leads",
+      "plugin": "cti-leads",
+      "rendered": true,
+      "title": "Leads",
+      "shown": "cti-leads",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-malware",
+      "plugin": "cti-malware",
+      "rendered": true,
+      "title": "Malware",
+      "shown": "cti-malware",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-victims",
+      "plugin": "cti-victims",
+      "rendered": true,
+      "title": "Victims",
+      "shown": "cti-victims",
+      "interactive": true,
+      "errors": [],
+      "overflow": []
+    },
+    {
+      "view": "cti-watches",
+      "plugin": "cti-watches",
+      "rendered": true,
+      "title": "Watches",
+      "shown": "cti-watches",
       "interactive": true,
       "errors": [],
       "overflow": []
@@ -1871,7 +2011,7 @@
       "create": "persisted",
       "control": "Add",
       "namespaces": [
-        "workspace-settings"
+        "todo-lists"
       ]
     },
     {

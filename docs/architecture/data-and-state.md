@@ -97,6 +97,7 @@ Never edit a migration after it has been deployed; add a new one.
 | V26 | Blueprint autonomy levels |
 | V27 | `remote_service_credentials` (AES-GCM encrypted) |
 | V28 | `praxis_submissions` |
+| V29 | `cti_objects`, `cti_relationships`, `cti_changes` (threat-intelligence knowledge base) |
 
 Several tables are protected by database triggers, not only by service code: for
 example, workflow runs reject terminal-state regressions and invalid attempt

@@ -30,6 +30,7 @@ backend/src/main/java/com/modulo/
   state/         versioned plugin state API
   integrations/  Noesis, Praxis
   knowledge/     embeddings, semantic search, Ask Modulo
+  cti/           threat-intelligence knowledge base (STIX/MISP, ingest, graph projection)
 shared/          pack manifests and approval canonicalization shared by both sides
 docs/            see docs/README.md; docs/reference/generated/ is machine-written
 ```
